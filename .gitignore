@@ -10,6 +10,7 @@ lerna-debug.log*
 # Dependencies
 node_modules
 dist
+dist-node
 dist-ssr
 *.local
 
@@ -34,6 +35,9 @@ dist-ssr
 build
 coverage
 *.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+vite.config.d.ts.map
 
 # Bun
 .bun

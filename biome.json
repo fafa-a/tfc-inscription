@@ -47,16 +47,34 @@
   "json": {
     "formatter": {
       "indentWidth": 2
+    },
+    "parser": {
+      "allowComments": true,
+      "allowTrailingCommas": true
     }
   },
   "files": {
     "ignore": [
       "node_modules",
       "dist",
+      "dist-node",
       "build",
       "coverage",
       ".git",
-      "*.min.js"
+      "*.min.js",
+      "*.d.ts",
+      "*.js"
     ]
-  }
+  },
+  "overrides": [
+    {
+      "include": ["tsconfig*.json"],
+      "json": {
+        "parser": {
+          "allowComments": true,
+          "allowTrailingCommas": true
+        }
+      }
+    }
+  ]
 }
