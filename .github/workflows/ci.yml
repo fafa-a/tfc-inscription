@@ -30,7 +30,13 @@ jobs:
         run: bun run lint
 
       - name: Test
-        run: bun test
+        run: |
+          if find . -type f \( -name "*.test.ts" -o -name "*.test.tsx" -o -name "*.spec.ts" -o -name "*.spec.tsx" \) | grep -q .; then
+            echo "Running tests..."
+            bun test
+          else
+            echo "No test files found, skipping tests"
+          fi
 
       - name: Build
         run: bun run build

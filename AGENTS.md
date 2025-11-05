@@ -17,6 +17,9 @@
 - **Naming**: camelCase for variables/functions, PascalCase for components/classes
 - **Error Handling**: Use try-catch for async, Error boundaries for React
 - **Formatting**: Run lint before commits, fix issues automatically when possible
+- **Event Handlers**: Avoid inline arrow functions in JSX event handlers - use useCallback or named functions to prevent unnecessary re-renders
+- **Non-null Assertions**: Never use non-null assertions (!) - always handle null/undefined cases explicitly
+- **Function Binding**: Never use .bind() - use arrow functions or useCallback instead
 
 ## Notes
 - CI runs on all PRs and main branch pushes

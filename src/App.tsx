@@ -1,7 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 function App() {
   const [count, setCount] = useState(0);
+
+  const handleIncrement = useCallback(() => {
+    setCount((prevCount) => prevCount + 1);
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-gray-50 dark:bg-gray-900">
@@ -18,7 +22,7 @@ function App() {
         <div className="p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg text-center">
           <button
             type="button"
-            onClick={() => setCount((count) => count + 1)}
+            onClick={handleIncrement}
             className="px-6 py-3 text-base font-medium text-white bg-purple-600 hover:bg-purple-700 active:translate-y-0.5 rounded-lg transition-all duration-200"
           >
             count is {count}
