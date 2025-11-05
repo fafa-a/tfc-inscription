@@ -19,7 +19,12 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install
+        run: |
+          if [ -f package.json ]; then
+            bun install
+          else
+            echo "No package.json, skipping install"
+          fi
 
       - name: Lint
         run: bun run lint
