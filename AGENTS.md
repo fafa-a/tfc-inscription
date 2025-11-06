@@ -1,7 +1,6 @@
 # Agent Guidelines for tfc-inscription
 
 ## Build & Test Commands
-
 - **Install**: `bun install`
 - **Build**: `bun run build`
 - **Lint**: `bun run lint`
@@ -10,7 +9,6 @@
 - **Test (watch)**: `bun test --watch`
 
 ## Code Style
-
 - **Runtime**: Bun (not Node.js)
 - **Framework**: React with TypeScript
 - **Testing**: Vitest (configured in DeepSource)
@@ -30,5 +28,6 @@
 
 ## Notes
 
+## Notes
 - CI runs on all PRs and main branch pushes
 - DeepSource analyzer enabled for JavaScript/React
