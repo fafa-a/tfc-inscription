@@ -97,28 +97,29 @@ export default function InscriptionForm() {
   );
 
   // Create stable change handlers
+  // Using a generic type parameter to preserve TanStack Form's exact type
   const createTextChangeHandler = useCallback(
-    // biome-ignore lint: Generic handler needs any type for TanStack Form compatibility
-    (handleChange: any) => (e: React.ChangeEvent<HTMLInputElement>) => {
-      handleChange(e.target.value);
-    },
+    <T,>(handleChange: (value: T) => void) =>
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        handleChange(e.target.value as T);
+      },
     []
   );
 
   const createSelectChangeHandler = useCallback(
-    // biome-ignore lint: Generic handler needs any type for TanStack Form compatibility
-    (handleChange: any) => (e: React.ChangeEvent<HTMLSelectElement>) => {
-      handleChange(e.target.value);
-    },
+    <T,>(handleChange: (value: T) => void) =>
+      (e: React.ChangeEvent<HTMLSelectElement>) => {
+        handleChange(e.target.value as T);
+      },
     []
   );
 
   const createBirthdayChangeHandler = useCallback(
-    // biome-ignore lint: Generic handler needs any type for TanStack Form compatibility
-    (handleChange: any, currentValue: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
-      const formatted = formatDateInput(e.target.value, currentValue);
-      handleChange(formatted);
-    },
+    <T,>(handleChange: (value: T) => void, currentValue: string) =>
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const formatted = formatDateInput(e.target.value, currentValue);
+        handleChange(formatted as T);
+      },
     []
   );
 
