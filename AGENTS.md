@@ -1,6 +1,7 @@
 # Agent Guidelines for tfc-inscription
 
 ## Build & Test Commands
+
 - **Install**: `bun install`
 - **Build**: `bun run build`
 - **Lint**: `bun run lint`
@@ -9,6 +10,7 @@
 - **Test (watch)**: `bun test --watch`
 
 ## Code Style
+
 - **Runtime**: Bun (not Node.js)
 - **Framework**: React with TypeScript
 - **Testing**: Vitest (configured in DeepSource)
@@ -21,6 +23,12 @@
 - **Non-null Assertions**: Never use non-null assertions (!) - always handle null/undefined cases explicitly
 - **Function Binding**: Never use .bind() - use arrow functions or useCallback instead
 
+## Agent Behavior
+
+- **Always ask the user before running build commands** - Don't run them automatically unless explicitly requested
+- Let the user decide when to verify their build
+
 ## Notes
+
 - CI runs on all PRs and main branch pushes
 - DeepSource analyzer enabled for JavaScript/React
