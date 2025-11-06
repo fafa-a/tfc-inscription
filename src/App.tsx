@@ -7,9 +7,7 @@ function App() {
         <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent mb-2">
           TFC Inscription
         </h1>
-        <p className="text-gray-600 dark:text-gray-400 text-sm">
-          Club de sports de combat
-        </p>
+        <p className="text-gray-600 dark:text-gray-400 text-sm">Club de sports de combat</p>
       </header>
 
       <main className="w-full max-w-4xl">

@@ -1,4 +1,5 @@
 import { useForm } from '@tanstack/react-form';
+import { useCallback } from 'react';
 import { z } from 'zod';
 
 // Utility function to format date input as DD/MM/YYYY
@@ -86,20 +87,48 @@ export default function InscriptionForm() {
     },
   });
 
+  const handleFormSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      form.handleSubmit();
+    },
+    [form]
+  );
+
+  // Create stable change handlers
+  const createTextChangeHandler = useCallback(
+    // biome-ignore lint: Generic handler needs any type for TanStack Form compatibility
+    (handleChange: any) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      handleChange(e.target.value);
+    },
+    []
+  );
+
+  const createSelectChangeHandler = useCallback(
+    // biome-ignore lint: Generic handler needs any type for TanStack Form compatibility
+    (handleChange: any) => (e: React.ChangeEvent<HTMLSelectElement>) => {
+      handleChange(e.target.value);
+    },
+    []
+  );
+
+  const createBirthdayChangeHandler = useCallback(
+    // biome-ignore lint: Generic handler needs any type for TanStack Form compatibility
+    (handleChange: any, currentValue: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      const formatted = formatDateInput(e.target.value, currentValue);
+      handleChange(formatted);
+    },
+    []
+  );
+
   return (
     <div className="w-full max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
       <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
         Formulaire d'inscription
       </h2>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          form.handleSubmit();
-        }}
-        className="space-y-4"
-      >
+      <form onSubmit={handleFormSubmit} className="space-y-4">
         {/* Firstname */}
         <form.Field
           name="firstname"
@@ -126,7 +155,7 @@ export default function InscriptionForm() {
                 type="text"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
+                onChange={createTextChangeHandler(field.handleChange)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               />
               {field.state.meta.errors.length > 0 && (
@@ -164,7 +193,7 @@ export default function InscriptionForm() {
                 type="text"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
+                onChange={createTextChangeHandler(field.handleChange)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               />
               {field.state.meta.errors.length > 0 && (
@@ -203,10 +232,7 @@ export default function InscriptionForm() {
                 placeholder="JJ/MM/AAAA"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => {
-                  const formatted = formatDateInput(e.target.value, field.state.value);
-                  field.handleChange(formatted);
-                }}
+                onChange={createBirthdayChangeHandler(field.handleChange, field.state.value)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               />
               {field.state.meta.errors.length > 0 && (
@@ -243,7 +269,7 @@ export default function InscriptionForm() {
                 id="genre"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value as FormData['genre'])}
+                onChange={createSelectChangeHandler(field.handleChange)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               >
                 <option value="">Sélectionner...</option>
@@ -286,7 +312,7 @@ export default function InscriptionForm() {
                 placeholder="0612345678"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
+                onChange={createTextChangeHandler(field.handleChange)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               />
               {field.state.meta.errors.length > 0 && (
@@ -325,7 +351,7 @@ export default function InscriptionForm() {
                 placeholder="0612345678"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
+                onChange={createTextChangeHandler(field.handleChange)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               />
               {field.state.meta.errors.length > 0 && (
@@ -364,7 +390,7 @@ export default function InscriptionForm() {
                 placeholder="exemple@email.com"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
+                onChange={createTextChangeHandler(field.handleChange)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               />
               {field.state.meta.errors.length > 0 && (
@@ -401,7 +427,7 @@ export default function InscriptionForm() {
                 id="discipline"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value as FormData['discipline'])}
+                onChange={createSelectChangeHandler(field.handleChange)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               >
                 <option value="">Sélectionner...</option>
