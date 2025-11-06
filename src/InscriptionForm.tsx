@@ -1,6 +1,7 @@
 import { useForm } from '@tanstack/react-form';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { z } from 'zod';
+import { type Discipline, supabase } from './lib/supabase';
 
 // Utility function to format date input as DD/MM/YYYY
 const formatDateInput = (value: string, previousValue: string): string => {
@@ -62,14 +63,33 @@ const formSchema = z.object({
     .length(10, "Le numéro d'urgence doit contenir 10 chiffres")
     .regex(/^[0-9]+$/, 'Le numéro doit contenir uniquement des chiffres'),
   email: z.email('Adresse email invalide'),
-  discipline: z.enum(['boxe', 'boxe thai', 'mma', 'integral'], {
-    message: 'Veuillez sélectionner une discipline',
-  }),
+  discipline: z.string().min(1, 'Veuillez sélectionner une discipline'),
 });
 
 type FormData = z.infer<typeof formSchema>;
 
 export default function InscriptionForm() {
+  const [disciplines, setDisciplines] = useState<Discipline[]>([]);
+  const [isLoadingDisciplines, setIsLoadingDisciplines] = useState(true);
+
+  useEffect(() => {
+    const fetchDisciplines = async () => {
+      const { data, error } = await supabase
+        .from('disciplines')
+        .select('id, name')
+        .eq('active', true);
+
+      if (error) {
+        console.error('Error fetching disciplines:', error);
+      } else if (data) {
+        setDisciplines(data);
+      }
+      setIsLoadingDisciplines(false);
+    };
+
+    fetchDisciplines();
+  }, []);
+
   const form = useForm({
     defaultValues: {
       firstname: '',
@@ -79,7 +99,7 @@ export default function InscriptionForm() {
       phone: '',
       urgencyPhone: '',
       email: '',
-      discipline: '' as FormData['discipline'] | '',
+      discipline: '',
     },
     onSubmit: async ({ value }) => {
       console.log('Form submitted:', value);
@@ -429,13 +449,17 @@ export default function InscriptionForm() {
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={createSelectChangeHandler(field.handleChange)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                disabled={isLoadingDisciplines}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <option value="">Sélectionner...</option>
-                <option value="boxe">Boxe</option>
-                <option value="boxe thai">Boxe Thaï</option>
-                <option value="mma">MMA</option>
-                <option value="integral">Intégral</option>
+                <option value="">
+                  {isLoadingDisciplines ? 'Chargement...' : 'Sélectionner...'}
+                </option>
+                {disciplines.map((discipline) => (
+                  <option key={discipline.id} value={discipline.id}>
+                    {discipline.name}
+                  </option>
+                ))}
               </select>
               {field.state.meta.errors.length > 0 && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
