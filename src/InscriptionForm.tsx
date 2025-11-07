@@ -1,7 +1,14 @@
 import { useForm } from '@tanstack/react-form';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
-import { type AgeGroup, type Discipline, type SubscriptionPlan, supabase } from './lib/supabase';
+import { 
+  type AgeGroup, 
+  type Discipline, 
+  type SubscriptionPlan, 
+  supabase,
+  insertMemberWithSubscription,
+  convertToISODate
+} from './lib/supabase';
 import { getAgeGroupFromBirthday } from './utils/ageUtils';
 
 // Utility function to format date input as DD/MM/YYYY
@@ -75,6 +82,9 @@ export default function InscriptionForm() {
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [isLoadingDisciplines, setIsLoadingDisciplines] = useState(true);
   const [isLoadingPlans, setIsLoadingPlans] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -123,8 +133,71 @@ export default function InscriptionForm() {
       subscriptionPlan: '',
     },
     onSubmit: async ({ value }) => {
-      console.log('Form submitted:', value);
-      alert('Formulaire soumis avec succès!');
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setSubmitSuccess(false);
+
+      try {
+        // Validate form
+        const validated = formSchema.parse(value);
+
+        // Get the selected plan to retrieve season_label
+        const selectedPlan = subscriptionPlans.find(p => p.id === validated.subscriptionPlan);
+        if (!selectedPlan) {
+          throw new Error('Plan d\'abonnement introuvable');
+        }
+
+        // Convert birthday from DD/MM/YYYY to YYYY-MM-DD
+        const birthDateISO = convertToISODate(validated.birthday);
+
+        // Map genre from form values to database values
+        const genderMap: Record<'homme' | 'femme', 'male' | 'female'> = {
+          homme: 'male',
+          femme: 'female',
+        };
+
+        // Prepare member data
+        const memberData = {
+          first_name: validated.firstname,
+          last_name: validated.lastname,
+          birth_date: birthDateISO,
+          gender: genderMap[validated.genre],
+          phone: validated.phone,
+          emergency_phone: validated.urgencyPhone,
+          email: validated.email,
+          discipline_id: validated.discipline,
+          notes: `Inscription web ${selectedPlan.season_label}`,
+        };
+
+        // Insert member and subscription
+        const result = await insertMemberWithSubscription(
+          memberData,
+          validated.subscriptionPlan,
+          selectedPlan.season_label
+        );
+
+        if (!result.success) {
+          throw new Error(result.error || 'Erreur lors de l\'inscription');
+        }
+
+        setSubmitSuccess(true);
+        
+        // Reset form after successful submission
+        form.reset();
+        setCurrentBirthday('');
+        setCurrentDiscipline('');
+      } catch (error) {
+        console.error('Submission error:', error);
+        if (error instanceof z.ZodError) {
+          setSubmitError('Veuillez vérifier tous les champs du formulaire');
+        } else if (error instanceof Error) {
+          setSubmitError(error.message);
+        } else {
+          setSubmitError('Une erreur est survenue lors de l\'inscription');
+        }
+      } finally {
+        setIsSubmitting(false);
+      }
     },
   });
 
@@ -221,6 +294,24 @@ export default function InscriptionForm() {
       <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
         Formulaire d'inscription
       </h2>
+
+      {/* Success Message */}
+      {submitSuccess && (
+        <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <p className="text-green-800 dark:text-green-200 font-medium">
+            ✓ Inscription réussie ! Votre demande a été enregistrée.
+          </p>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {submitError && (
+        <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-red-800 dark:text-red-200 font-medium">
+            ✗ {submitError}
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleFormSubmit} className="space-y-4">
         {/* Firstname */}
@@ -619,9 +710,10 @@ export default function InscriptionForm() {
         <div className="pt-4">
           <button
             type="submit"
-            className="w-full px-6 py-3 text-base font-medium text-white bg-purple-600 hover:bg-purple-700 active:translate-y-0.5 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+            disabled={isSubmitting}
+            className="w-full px-6 py-3 text-base font-medium text-white bg-purple-600 hover:bg-purple-700 active:translate-y-0.5 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:translate-y-0"
           >
-            S'inscrire
+            {isSubmitting ? 'Inscription en cours...' : 'S\'inscrire'}
           </button>
         </div>
       </form>
