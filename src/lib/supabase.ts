@@ -187,7 +187,6 @@ export async function insertMemberWithSubscription(
       subscription,
     };
   } catch (error) {
-    console.error('Error in insertMemberWithSubscription:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Une erreur inconnue est survenue',

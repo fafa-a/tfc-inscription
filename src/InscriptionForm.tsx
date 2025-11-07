@@ -1,13 +1,13 @@
 import { useForm } from '@tanstack/react-form';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
-import { 
-  type AgeGroup, 
-  type Discipline, 
-  type SubscriptionPlan, 
+import {
+  type AgeGroup,
+  type Discipline,
+  type SubscriptionPlan,
   supabase,
   insertMemberWithSubscription,
-  convertToISODate
+  convertToISODate,
 } from './lib/supabase';
 import { getAgeGroupFromBirthday } from './utils/ageUtils';
 
@@ -85,6 +85,9 @@ export default function InscriptionForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  // State to track current birthday and discipline for filtering plans
+  const [currentBirthday, setCurrentBirthday] = useState('');
+  const [currentDiscipline, setCurrentDiscipline] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -94,10 +97,7 @@ export default function InscriptionForm() {
         .select('id, name')
         .eq('active', true);
 
-      if (disciplinesError) {
-        console.error('Error fetching disciplines:', disciplinesError);
-      } else if (disciplinesData) {
-        console.log('Fetched disciplines:', disciplinesData);
+      if (!disciplinesError && disciplinesData) {
         setDisciplines(disciplinesData);
       }
       setIsLoadingDisciplines(false);
@@ -108,10 +108,7 @@ export default function InscriptionForm() {
         .select('id, name, type, season_label, price, discipline_id, active')
         .eq('active', true);
 
-      if (plansError) {
-        console.error('Error fetching subscription plans:', plansError);
-      } else if (plansData) {
-        console.log('Fetched subscription plans:', plansData);
+      if (!plansError && plansData) {
         setSubscriptionPlans(plansData);
       }
       setIsLoadingPlans(false);
@@ -142,9 +139,9 @@ export default function InscriptionForm() {
         const validated = formSchema.parse(value);
 
         // Get the selected plan to retrieve season_label
-        const selectedPlan = subscriptionPlans.find(p => p.id === validated.subscriptionPlan);
+        const selectedPlan = subscriptionPlans.find((p) => p.id === validated.subscriptionPlan);
         if (!selectedPlan) {
-          throw new Error('Plan d\'abonnement introuvable');
+          throw new Error("Plan d'abonnement introuvable");
         }
 
         // Convert birthday from DD/MM/YYYY to YYYY-MM-DD
@@ -177,33 +174,28 @@ export default function InscriptionForm() {
         );
 
         if (!result.success) {
-          throw new Error(result.error || 'Erreur lors de l\'inscription');
+          throw new Error(result.error || "Erreur lors de l'inscription");
         }
 
         setSubmitSuccess(true);
-        
+
         // Reset form after successful submission
         form.reset();
         setCurrentBirthday('');
         setCurrentDiscipline('');
       } catch (error) {
-        console.error('Submission error:', error);
         if (error instanceof z.ZodError) {
           setSubmitError('Veuillez vérifier tous les champs du formulaire');
         } else if (error instanceof Error) {
           setSubmitError(error.message);
         } else {
-          setSubmitError('Une erreur est survenue lors de l\'inscription');
+          setSubmitError("Une erreur est survenue lors de l'inscription");
         }
       } finally {
         setIsSubmitting(false);
       }
     },
   });
-
-  // State to track current birthday and discipline for filtering plans
-  const [currentBirthday, setCurrentBirthday] = useState('');
-  const [currentDiscipline, setCurrentDiscipline] = useState('');
 
   // Calculate age group from birthday
   const ageGroup: AgeGroup | null = useMemo(() => {
@@ -213,27 +205,16 @@ export default function InscriptionForm() {
 
   // Filter subscription plans based on age group and selected discipline
   const filteredPlans = useMemo(() => {
-    console.log('=== Filtering Plans ===');
-    console.log('Current birthday:', currentBirthday);
-    console.log('Current discipline:', currentDiscipline);
-    console.log('Age group:', ageGroup);
-    console.log('Total plans:', subscriptionPlans.length);
-
     if (!currentDiscipline) {
-      console.log('❌ No discipline selected');
       return [];
     }
 
     if (!ageGroup) {
-      console.log('❌ No age group (invalid birthday)');
       return [];
     }
 
     const filtered = subscriptionPlans.filter((plan) => {
       const disciplineMatch = plan.discipline_id === currentDiscipline;
-      console.log(
-        `Plan: "${plan.name}" | Discipline ID: ${plan.discipline_id} vs ${currentDiscipline} = ${disciplineMatch}`
-      );
 
       if (!disciplineMatch) return false;
 
@@ -250,15 +231,9 @@ export default function InscriptionForm() {
         ageMatch = !planName.includes('enfants') && !planName.includes('ados');
       }
 
-      console.log(`  Age match for "${ageGroup}": ${ageMatch} (plan: "${plan.name}")`);
       return ageMatch;
     });
 
-    console.log('✅ Filtered plans count:', filtered.length);
-    console.log(
-      'Filtered plan names:',
-      filtered.map((p) => p.name)
-    );
     return filtered;
   }, [currentBirthday, currentDiscipline, ageGroup, subscriptionPlans]);
 
@@ -289,6 +264,31 @@ export default function InscriptionForm() {
     []
   );
 
+  // Birthday change handler with date formatting and state updates
+  const handleBirthdayChange = useCallback(
+    (fieldHandleChange: (value: string) => void) =>
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const formatted = formatDateInput(e.target.value, form.getFieldValue('birthday'));
+        fieldHandleChange(formatted);
+        setCurrentBirthday(formatted);
+        // Reset subscription plan when birthday changes (age group might change)
+        form.setFieldValue('subscriptionPlan', '');
+      },
+    [form]
+  );
+
+  // Discipline change handler with state updates
+  const handleDisciplineChange = useCallback(
+    (fieldHandleChange: (value: string) => void) =>
+      (e: React.ChangeEvent<HTMLSelectElement>) => {
+        fieldHandleChange(e.target.value);
+        setCurrentDiscipline(e.target.value);
+        // Reset subscription plan when discipline changes
+        form.setFieldValue('subscriptionPlan', '');
+      },
+    [form]
+  );
+
   return (
     <div className="w-full max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
       <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
@@ -307,9 +307,7 @@ export default function InscriptionForm() {
       {/* Error Message */}
       {submitError && (
         <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-red-800 dark:text-red-200 font-medium">
-            ✗ {submitError}
-          </p>
+          <p className="text-red-800 dark:text-red-200 font-medium">✗ {submitError}</p>
         </div>
       )}
 
@@ -417,13 +415,7 @@ export default function InscriptionForm() {
                 placeholder="JJ/MM/AAAA"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => {
-                  const formatted = formatDateInput(e.target.value, field.state.value);
-                  field.handleChange(formatted);
-                  setCurrentBirthday(formatted);
-                  // Reset subscription plan when birthday changes (age group might change)
-                  form.setFieldValue('subscriptionPlan', '');
-                }}
+                onChange={handleBirthdayChange(field.handleChange)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               />
               {field.state.meta.errors.length > 0 && (
@@ -618,12 +610,7 @@ export default function InscriptionForm() {
                 id="discipline"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => {
-                  field.handleChange(e.target.value);
-                  setCurrentDiscipline(e.target.value);
-                  // Reset subscription plan when discipline changes
-                  form.setFieldValue('subscriptionPlan', '');
-                }}
+                onChange={handleDisciplineChange(field.handleChange)}
                 disabled={isLoadingDisciplines}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -713,7 +700,7 @@ export default function InscriptionForm() {
             disabled={isSubmitting}
             className="w-full px-6 py-3 text-base font-medium text-white bg-purple-600 hover:bg-purple-700 active:translate-y-0.5 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:translate-y-0"
           >
-            {isSubmitting ? 'Inscription en cours...' : 'S\'inscrire'}
+            {isSubmitting ? 'Inscription en cours...' : "S'inscrire"}
           </button>
         </div>
       </form>
