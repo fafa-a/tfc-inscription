@@ -1,7 +1,9 @@
 name = "tfc-inscription"
 compatibility_date = "2025-11-07"
 
+[build]
+command = "bun run build"
+
 [pages]
-build_output_dir = "./dist"
-build_command = "bun run build"
+pages_build_output_dir = "./dist"
 
