@@ -20,6 +20,14 @@
 - **Event Handlers**: Avoid inline arrow functions in JSX event handlers - use useCallback or named functions to prevent unnecessary re-renders
 - **Non-null Assertions**: Never use non-null assertions (!) - always handle null/undefined cases explicitly
 - **Function Binding**: Never use .bind() - use arrow functions or useCallback instead
+- **Console Statements**: Never use console.log, console.error, or other console methods in production code - remove all console statements
+
+## Agent Behavior
+
+- **Always ask the user before running build commands** - Don't run them automatically unless explicitly requested
+- Let the user decide when to verify their build
+
+## Notes
 
 ## Notes
 - CI runs on all PRs and main branch pushes
