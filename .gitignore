@@ -41,4 +41,4 @@ vite.config.d.ts.map
 
 # Bun
 .bun
-bun.lockb
+#bun.lockb
