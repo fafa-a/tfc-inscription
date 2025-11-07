@@ -5,9 +5,9 @@ import {
   type AgeGroup,
   type Discipline,
   type SubscriptionPlan,
-  supabase,
-  insertMemberWithSubscription,
   convertToISODate,
+  insertMemberWithSubscription,
+  supabase,
 } from './lib/supabase';
 import { getAgeGroupFromBirthday } from './utils/ageUtils';
 
@@ -235,7 +235,7 @@ export default function InscriptionForm() {
     });
 
     return filtered;
-  }, [currentBirthday, currentDiscipline, ageGroup, subscriptionPlans]);
+  }, [currentDiscipline, ageGroup, subscriptionPlans]);
 
   const handleFormSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -266,26 +266,24 @@ export default function InscriptionForm() {
 
   // Birthday change handler with date formatting and state updates
   const handleBirthdayChange = useCallback(
-    (fieldHandleChange: (value: string) => void) =>
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        const formatted = formatDateInput(e.target.value, form.getFieldValue('birthday'));
-        fieldHandleChange(formatted);
-        setCurrentBirthday(formatted);
-        // Reset subscription plan when birthday changes (age group might change)
-        form.setFieldValue('subscriptionPlan', '');
-      },
+    (fieldHandleChange: (value: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      const formatted = formatDateInput(e.target.value, form.getFieldValue('birthday'));
+      fieldHandleChange(formatted);
+      setCurrentBirthday(formatted);
+      // Reset subscription plan when birthday changes (age group might change)
+      form.setFieldValue('subscriptionPlan', '');
+    },
     [form]
   );
 
   // Discipline change handler with state updates
   const handleDisciplineChange = useCallback(
-    (fieldHandleChange: (value: string) => void) =>
-      (e: React.ChangeEvent<HTMLSelectElement>) => {
-        fieldHandleChange(e.target.value);
-        setCurrentDiscipline(e.target.value);
-        // Reset subscription plan when discipline changes
-        form.setFieldValue('subscriptionPlan', '');
-      },
+    (fieldHandleChange: (value: string) => void) => (e: React.ChangeEvent<HTMLSelectElement>) => {
+      fieldHandleChange(e.target.value);
+      setCurrentDiscipline(e.target.value);
+      // Reset subscription plan when discipline changes
+      form.setFieldValue('subscriptionPlan', '');
+    },
     [form]
   );
 
