@@ -10,6 +10,18 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export interface Discipline {
-  id: number;
+  id: string;
   name: string;
 }
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  type: 'season' | 'semester1' | 'quarter' | 'month' | 'yearly';
+  season_label: string;
+  price: number;
+  discipline_id: string;
+  active: boolean;
+}
+
+export type AgeGroup = 'enfant' | 'ado' | 'adulte';

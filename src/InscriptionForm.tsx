@@ -1,7 +1,8 @@
 import { useForm } from '@tanstack/react-form';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
-import { type Discipline, supabase } from './lib/supabase';
+import { type AgeGroup, type Discipline, type SubscriptionPlan, supabase } from './lib/supabase';
+import { getAgeGroupFromBirthday } from './utils/ageUtils';
 
 // Utility function to format date input as DD/MM/YYYY
 const formatDateInput = (value: string, previousValue: string): string => {
@@ -64,30 +65,49 @@ const formSchema = z.object({
     .regex(/^[0-9]+$/, 'Le numéro doit contenir uniquement des chiffres'),
   email: z.email('Adresse email invalide'),
   discipline: z.string().min(1, 'Veuillez sélectionner une discipline'),
+  subscriptionPlan: z.string().min(1, 'Veuillez sélectionner une formule'),
 });
 
 type FormData = z.infer<typeof formSchema>;
 
 export default function InscriptionForm() {
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [isLoadingDisciplines, setIsLoadingDisciplines] = useState(true);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(true);
 
   useEffect(() => {
-    const fetchDisciplines = async () => {
-      const { data, error } = await supabase
+    const fetchData = async () => {
+      // Fetch disciplines
+      const { data: disciplinesData, error: disciplinesError } = await supabase
         .from('disciplines')
         .select('id, name')
         .eq('active', true);
 
-      if (error) {
-        console.error('Error fetching disciplines:', error);
-      } else if (data) {
-        setDisciplines(data);
+      if (disciplinesError) {
+        console.error('Error fetching disciplines:', disciplinesError);
+      } else if (disciplinesData) {
+        console.log('Fetched disciplines:', disciplinesData);
+        setDisciplines(disciplinesData);
       }
       setIsLoadingDisciplines(false);
+
+      // Fetch subscription plans
+      const { data: plansData, error: plansError } = await supabase
+        .from('subscription_plans')
+        .select('id, name, type, season_label, price, discipline_id, active')
+        .eq('active', true);
+
+      if (plansError) {
+        console.error('Error fetching subscription plans:', plansError);
+      } else if (plansData) {
+        console.log('Fetched subscription plans:', plansData);
+        setSubscriptionPlans(plansData);
+      }
+      setIsLoadingPlans(false);
     };
 
-    fetchDisciplines();
+    fetchData();
   }, []);
 
   const form = useForm({
@@ -100,12 +120,74 @@ export default function InscriptionForm() {
       urgencyPhone: '',
       email: '',
       discipline: '',
+      subscriptionPlan: '',
     },
     onSubmit: async ({ value }) => {
       console.log('Form submitted:', value);
       alert('Formulaire soumis avec succès!');
     },
   });
+
+  // State to track current birthday and discipline for filtering plans
+  const [currentBirthday, setCurrentBirthday] = useState('');
+  const [currentDiscipline, setCurrentDiscipline] = useState('');
+
+  // Calculate age group from birthday
+  const ageGroup: AgeGroup | null = useMemo(() => {
+    if (!currentBirthday) return null;
+    return getAgeGroupFromBirthday(currentBirthday);
+  }, [currentBirthday]);
+
+  // Filter subscription plans based on age group and selected discipline
+  const filteredPlans = useMemo(() => {
+    console.log('=== Filtering Plans ===');
+    console.log('Current birthday:', currentBirthday);
+    console.log('Current discipline:', currentDiscipline);
+    console.log('Age group:', ageGroup);
+    console.log('Total plans:', subscriptionPlans.length);
+
+    if (!currentDiscipline) {
+      console.log('❌ No discipline selected');
+      return [];
+    }
+
+    if (!ageGroup) {
+      console.log('❌ No age group (invalid birthday)');
+      return [];
+    }
+
+    const filtered = subscriptionPlans.filter((plan) => {
+      const disciplineMatch = plan.discipline_id === currentDiscipline;
+      console.log(
+        `Plan: "${plan.name}" | Discipline ID: ${plan.discipline_id} vs ${currentDiscipline} = ${disciplineMatch}`
+      );
+
+      if (!disciplineMatch) return false;
+
+      const planName = plan.name.toLowerCase();
+
+      // Filter by age group
+      let ageMatch = false;
+      if (ageGroup === 'enfant') {
+        ageMatch = planName.includes('enfants');
+      } else if (ageGroup === 'ado') {
+        ageMatch = planName.includes('ados');
+      } else {
+        // adulte - exclude plans specifically for enfants or ados
+        ageMatch = !planName.includes('enfants') && !planName.includes('ados');
+      }
+
+      console.log(`  Age match for "${ageGroup}": ${ageMatch} (plan: "${plan.name}")`);
+      return ageMatch;
+    });
+
+    console.log('✅ Filtered plans count:', filtered.length);
+    console.log(
+      'Filtered plan names:',
+      filtered.map((p) => p.name)
+    );
+    return filtered;
+  }, [currentBirthday, currentDiscipline, ageGroup, subscriptionPlans]);
 
   const handleFormSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -130,15 +212,6 @@ export default function InscriptionForm() {
     <T,>(handleChange: (value: T) => void) =>
       (e: React.ChangeEvent<HTMLSelectElement>) => {
         handleChange(e.target.value as T);
-      },
-    []
-  );
-
-  const createBirthdayChangeHandler = useCallback(
-    <T,>(handleChange: (value: T) => void, currentValue: string) =>
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        const formatted = formatDateInput(e.target.value, currentValue);
-        handleChange(formatted as T);
       },
     []
   );
@@ -253,7 +326,13 @@ export default function InscriptionForm() {
                 placeholder="JJ/MM/AAAA"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={createBirthdayChangeHandler(field.handleChange, field.state.value)}
+                onChange={(e) => {
+                  const formatted = formatDateInput(e.target.value, field.state.value);
+                  field.handleChange(formatted);
+                  setCurrentBirthday(formatted);
+                  // Reset subscription plan when birthday changes (age group might change)
+                  form.setFieldValue('subscriptionPlan', '');
+                }}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               />
               {field.state.meta.errors.length > 0 && (
@@ -448,7 +527,12 @@ export default function InscriptionForm() {
                 id="discipline"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={createSelectChangeHandler(field.handleChange)}
+                onChange={(e) => {
+                  field.handleChange(e.target.value);
+                  setCurrentDiscipline(e.target.value);
+                  // Reset subscription plan when discipline changes
+                  form.setFieldValue('subscriptionPlan', '');
+                }}
                 disabled={isLoadingDisciplines}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -458,6 +542,67 @@ export default function InscriptionForm() {
                 {disciplines.map((discipline) => (
                   <option key={discipline.id} value={discipline.id}>
                     {discipline.name}
+                  </option>
+                ))}
+              </select>
+              {field.state.meta.errors.length > 0 && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                  {field.state.meta.errors.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
+        </form.Field>
+
+        {/* Subscription Plan */}
+        <form.Field
+          name="subscriptionPlan"
+          validators={{
+            onChange: ({ value }) => {
+              const result = formSchema.shape.subscriptionPlan.safeParse(value);
+              if (!result.success) {
+                return result.error.issues[0]?.message;
+              }
+              return undefined;
+            },
+          }}
+        >
+          {(field) => (
+            <div>
+              <label
+                htmlFor="subscriptionPlan"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
+                Formule d'abonnement *
+              </label>
+              {!currentBirthday && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  Veuillez d'abord renseigner votre date de naissance
+                </p>
+              )}
+              {!currentDiscipline && currentBirthday && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  Veuillez d'abord sélectionner une discipline
+                </p>
+              )}
+              <select
+                id="subscriptionPlan"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={createSelectChangeHandler(field.handleChange)}
+                disabled={isLoadingPlans || !currentBirthday || !currentDiscipline}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">
+                  {isLoadingPlans
+                    ? 'Chargement...'
+                    : filteredPlans.length === 0
+                      ? 'Aucune formule disponible'
+                      : 'Sélectionner...'}
+                </option>
+                {filteredPlans.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.name} - {plan.price}€ ({plan.type})
                   </option>
                 ))}
               </select>
