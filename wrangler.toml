@@ -1,0 +1,5 @@
+name = "tfc-inscription"
+compatibility_date = "2025-11-07"
+
+[build]
+command = "bun run build"
