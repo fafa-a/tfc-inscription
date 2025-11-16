@@ -11,18 +11,11 @@ import {
 } from './lib/supabase';
 import { getAgeGroupFromBirthday } from './utils/ageUtils';
 
-// Utility function to format date input as DD/MM/YYYY
 const formatDateInput = (value: string, previousValue: string): string => {
-  // Remove all non-digits
   const digits = value.replace(/\D/g, '');
-
-  // Limit to 8 digits (DDMMYYYY)
   const limitedDigits = digits.slice(0, 8);
-
-  // Check if user is deleting (going backwards)
   const isDeleting = value.length < previousValue.length;
 
-  // Add slashes at appropriate positions
   if (limitedDigits.length >= 4) {
     const formatted = `${limitedDigits.slice(0, 2)}/${limitedDigits.slice(2, 4)}/${limitedDigits.slice(4)}`;
     return formatted;
@@ -71,6 +64,9 @@ const formSchema = z.object({
     .length(10, "Le numéro d'urgence doit contenir 10 chiffres")
     .regex(/^[0-9]+$/, 'Le numéro doit contenir uniquement des chiffres'),
   email: z.email('Adresse email invalide'),
+  temporality: z.enum(['season', 'semester1', 'quarter', 'month', 'yearly'], {
+    message: 'Veuillez sélectionner une temporalité',
+  }),
   discipline: z.string().min(1, 'Veuillez sélectionner une discipline'),
   subscriptionPlan: z.string().min(1, 'Veuillez sélectionner une formule'),
 });
@@ -85,13 +81,14 @@ export default function InscriptionForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
-  // State to track current birthday and discipline for filtering plans
   const [currentBirthday, setCurrentBirthday] = useState('');
+  const [currentTemporality, setCurrentTemporality] = useState('');
   const [currentDiscipline, setCurrentDiscipline] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
-      // Fetch disciplines
+      await supabase.auth.signOut();
+
       const { data: disciplinesData, error: disciplinesError } = await supabase
         .from('disciplines')
         .select('id, name')
@@ -102,14 +99,18 @@ export default function InscriptionForm() {
       }
       setIsLoadingDisciplines(false);
 
-      // Fetch subscription plans
       const { data: plansData, error: plansError } = await supabase
         .from('subscription_plans')
-        .select('id, name, type, season_label, price, discipline_id, active')
+        .select('id, duration, price, discipline_id, audience, active')
         .eq('active', true);
 
       if (!plansError && plansData) {
-        setSubscriptionPlans(plansData);
+        const mappedPlans: SubscriptionPlan[] = plansData.map((plan) => ({
+          ...plan,
+          type: plan.duration,
+          name: '',
+        }));
+        setSubscriptionPlans(mappedPlans);
       }
       setIsLoadingPlans(false);
     };
@@ -126,6 +127,7 @@ export default function InscriptionForm() {
       phone: '',
       urgencyPhone: '',
       email: '',
+      temporality: '' as FormData['temporality'] | '',
       discipline: '',
       subscriptionPlan: '',
     },
@@ -135,25 +137,15 @@ export default function InscriptionForm() {
       setSubmitSuccess(false);
 
       try {
-        // Validate form
         const validated = formSchema.parse(value);
 
-        // Get the selected plan to retrieve season_label
-        const selectedPlan = subscriptionPlans.find((p) => p.id === validated.subscriptionPlan);
-        if (!selectedPlan) {
-          throw new Error("Plan d'abonnement introuvable");
-        }
-
-        // Convert birthday from DD/MM/YYYY to YYYY-MM-DD
         const birthDateISO = convertToISODate(validated.birthday);
 
-        // Map genre from form values to database values
         const genderMap: Record<'homme' | 'femme', 'male' | 'female'> = {
           homme: 'male',
           femme: 'female',
         };
 
-        // Prepare member data
         const memberData = {
           first_name: validated.firstname,
           last_name: validated.lastname,
@@ -163,15 +155,10 @@ export default function InscriptionForm() {
           emergency_phone: validated.urgencyPhone,
           email: validated.email,
           discipline_id: validated.discipline,
-          notes: `Inscription web ${selectedPlan.season_label}`,
+          notes: 'Inscription web',
         };
 
-        // Insert member and subscription
-        const result = await insertMemberWithSubscription(
-          memberData,
-          validated.subscriptionPlan,
-          selectedPlan.season_label
-        );
+        const result = await insertMemberWithSubscription(memberData, validated.subscriptionPlan);
 
         if (!result.success) {
           throw new Error(result.error || "Erreur lors de l'inscription");
@@ -179,9 +166,9 @@ export default function InscriptionForm() {
 
         setSubmitSuccess(true);
 
-        // Reset form after successful submission
         form.reset();
         setCurrentBirthday('');
+        setCurrentTemporality('');
         setCurrentDiscipline('');
       } catch (error) {
         if (error instanceof z.ZodError) {
@@ -197,45 +184,45 @@ export default function InscriptionForm() {
     },
   });
 
-  // Calculate age group from birthday
   const ageGroup: AgeGroup | null = useMemo(() => {
     if (!currentBirthday) return null;
     return getAgeGroupFromBirthday(currentBirthday);
   }, [currentBirthday]);
 
-  // Filter subscription plans based on age group and selected discipline
   const filteredPlans = useMemo(() => {
-    if (!currentDiscipline) {
-      return [];
-    }
-
-    if (!ageGroup) {
+    if (!currentBirthday || !currentTemporality || !currentDiscipline || !ageGroup) {
       return [];
     }
 
     const filtered = subscriptionPlans.filter((plan) => {
-      const disciplineMatch = plan.discipline_id === currentDiscipline;
+      const temporalityMatch = plan.type === currentTemporality;
+      if (!temporalityMatch) return false;
 
+      const disciplineMatch = plan.discipline_id === currentDiscipline;
       if (!disciplineMatch) return false;
 
-      const planName = plan.name.toLowerCase();
-
-      // Filter by age group
-      let ageMatch = false;
+      let audienceMatch = false;
       if (ageGroup === 'enfant') {
-        ageMatch = planName.includes('enfants');
+        audienceMatch = plan.audience === 'child';
       } else if (ageGroup === 'ado') {
-        ageMatch = planName.includes('ados');
+        audienceMatch = plan.audience === 'teen';
       } else {
-        // adulte - exclude plans specifically for enfants or ados
-        ageMatch = !planName.includes('enfants') && !planName.includes('ados');
+        audienceMatch = plan.audience === 'adult' || plan.audience === 'reduced';
       }
 
-      return ageMatch;
+      return audienceMatch;
     });
 
-    return filtered;
-  }, [currentDiscipline, ageGroup, subscriptionPlans]);
+    const uniquePlans = filtered.reduce((acc, plan) => {
+      const key = `${plan.price}-${plan.audience}`;
+      if (!acc.has(key)) {
+        acc.set(key, plan);
+      }
+      return acc;
+    }, new Map<string, SubscriptionPlan>());
+
+    return Array.from(uniquePlans.values());
+  }, [currentBirthday, currentTemporality, currentDiscipline, ageGroup, subscriptionPlans]);
 
   const handleFormSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -246,8 +233,6 @@ export default function InscriptionForm() {
     [form]
   );
 
-  // Create stable change handlers
-  // Using a generic type parameter to preserve TanStack Form's exact type
   const createTextChangeHandler = useCallback(
     <T,>(handleChange: (value: T) => void) =>
       (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -264,28 +249,72 @@ export default function InscriptionForm() {
     []
   );
 
-  // Birthday change handler with date formatting and state updates
   const handleBirthdayChange = useCallback(
     (fieldHandleChange: (value: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
       const formatted = formatDateInput(e.target.value, form.getFieldValue('birthday'));
       fieldHandleChange(formatted);
       setCurrentBirthday(formatted);
-      // Reset subscription plan when birthday changes (age group might change)
       form.setFieldValue('subscriptionPlan', '');
     },
     [form]
   );
 
-  // Discipline change handler with state updates
-  const handleDisciplineChange = useCallback(
-    (fieldHandleChange: (value: string) => void) => (e: React.ChangeEvent<HTMLSelectElement>) => {
-      fieldHandleChange(e.target.value);
-      setCurrentDiscipline(e.target.value);
-      // Reset subscription plan when discipline changes
+  const handleTemporalityChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      const temporalityValue = value as FormData['temporality'];
+      form.setFieldValue('temporality', temporalityValue);
+      setCurrentTemporality(value);
       form.setFieldValue('subscriptionPlan', '');
     },
     [form]
   );
+
+  const handleDisciplineChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      form.setFieldValue('discipline', value);
+      setCurrentDiscipline(value);
+      form.setFieldValue('subscriptionPlan', '');
+    },
+    [form]
+  );
+
+  const availableTemporalities = useMemo(() => {
+    const temporalityTypes = new Set<string>();
+
+    subscriptionPlans.forEach((plan) => {
+      if (ageGroup) {
+        let audienceMatch = false;
+        if (ageGroup === 'enfant') {
+          audienceMatch = plan.audience === 'child';
+        } else if (ageGroup === 'ado') {
+          audienceMatch = plan.audience === 'teen';
+        } else {
+          audienceMatch = plan.audience === 'adult' || plan.audience === 'reduced';
+        }
+        if (audienceMatch) {
+          temporalityTypes.add(plan.type);
+        }
+      } else {
+        temporalityTypes.add(plan.type);
+      }
+    });
+
+    return Array.from(temporalityTypes);
+  }, [ageGroup, subscriptionPlans]);
+
+  const availableDisciplines = useMemo(() => {
+    return disciplines;
+  }, [disciplines]);
+
+  const temporalityLabels: Record<string, string> = {
+    season: 'Saison complète',
+    yearly: 'Année',
+    semester1: 'Semestre',
+    quarter: 'Trimestre',
+    month: 'Mois',
+  };
 
   return (
     <div className="w-full max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
@@ -293,7 +322,6 @@ export default function InscriptionForm() {
         Formulaire d'inscription
       </h2>
 
-      {/* Success Message */}
       {submitSuccess && (
         <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
           <p className="text-green-800 dark:text-green-200 font-medium">
@@ -302,7 +330,6 @@ export default function InscriptionForm() {
         </div>
       )}
 
-      {/* Error Message */}
       {submitError && (
         <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
           <p className="text-red-800 dark:text-red-200 font-medium">✗ {submitError}</p>
@@ -310,7 +337,6 @@ export default function InscriptionForm() {
       )}
 
       <form onSubmit={handleFormSubmit} className="space-y-4">
-        {/* Firstname */}
         <form.Field
           name="firstname"
           validators={{
@@ -348,7 +374,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Lastname */}
         <form.Field
           name="lastname"
           validators={{
@@ -386,7 +411,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Birthday */}
         <form.Field
           name="birthday"
           validators={{
@@ -425,7 +449,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Genre */}
         <form.Field
           name="genre"
           validators={{
@@ -466,7 +489,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Phone */}
         <form.Field
           name="phone"
           validators={{
@@ -505,7 +527,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Urgency Phone */}
         <form.Field
           name="urgencyPhone"
           validators={{
@@ -544,7 +565,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Email */}
         <form.Field
           name="email"
           validators={{
@@ -583,7 +603,65 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Discipline */}
+        <form.Field
+          name="temporality"
+          validators={{
+            onChange: ({ value }) => {
+              const result = formSchema.shape.temporality.safeParse(value);
+              if (!result.success) {
+                return result.error.issues[0]?.message;
+              }
+              return undefined;
+            },
+          }}
+        >
+          {(field) => (
+            <div>
+              <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                Temporalité *
+              </div>
+              {isLoadingPlans && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  Chargement des temporalités...
+                </p>
+              )}
+              <div className="space-y-2">
+                {availableTemporalities.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {subscriptionPlans.length === 0
+                      ? 'Aucun plan disponible dans la base de données'
+                      : 'Aucune temporalité disponible'}
+                  </p>
+                ) : (
+                  availableTemporalities.map((type) => (
+                    <label
+                      key={type}
+                      className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <input
+                        type="radio"
+                        name="temporality"
+                        value={type}
+                        checked={field.state.value === type}
+                        onChange={handleTemporalityChange}
+                        className="w-4 h-4 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="ml-3 text-gray-700 dark:text-gray-300">
+                        {temporalityLabels[type] || type}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+              {field.state.meta.errors.length > 0 && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                  {field.state.meta.errors.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
+        </form.Field>
+
         <form.Field
           name="discipline"
           validators={{
@@ -598,29 +676,42 @@ export default function InscriptionForm() {
         >
           {(field) => (
             <div>
-              <label
-                htmlFor="discipline"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
+              <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                 Discipline sportive *
-              </label>
-              <select
-                id="discipline"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={handleDisciplineChange(field.handleChange)}
-                disabled={isLoadingDisciplines}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">
-                  {isLoadingDisciplines ? 'Chargement...' : 'Sélectionner...'}
-                </option>
-                {disciplines.map((discipline) => (
-                  <option key={discipline.id} value={discipline.id}>
-                    {discipline.name}
-                  </option>
-                ))}
-              </select>
+              </div>
+              <div className="space-y-2">
+                {isLoadingDisciplines ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Chargement...</p>
+                ) : availableDisciplines.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {disciplines.length === 0
+                      ? 'Aucune discipline dans la base de données'
+                      : subscriptionPlans.length === 0
+                        ? 'Aucun plan disponible dans la base de données'
+                        : 'Aucune discipline disponible'}
+                  </p>
+                ) : (
+                  availableDisciplines.map((discipline) => (
+                    <label
+                      key={discipline.id}
+                      className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <input
+                        type="radio"
+                        name="discipline"
+                        value={discipline.id}
+                        checked={field.state.value === discipline.id}
+                        disabled={isLoadingDisciplines}
+                        onChange={handleDisciplineChange}
+                        className="w-4 h-4 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
+                      />
+                      <span className="ml-3 text-gray-700 dark:text-gray-300">
+                        {discipline.name}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
               {field.state.meta.errors.length > 0 && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
                   {field.state.meta.errors.join(', ')}
@@ -630,7 +721,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Subscription Plan */}
         <form.Field
           name="subscriptionPlan"
           validators={{
@@ -650,15 +740,32 @@ export default function InscriptionForm() {
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
               >
                 Formule d'abonnement *
+                {currentTemporality && (
+                  <span className="text-gray-500 dark:text-gray-400 font-normal">
+                    {' '}
+                    ({temporalityLabels[currentTemporality]})
+                  </span>
+                )}
+                {currentDiscipline && (
+                  <span className="text-gray-500 dark:text-gray-400 font-normal">
+                    {' '}
+                    - {disciplines.find((d) => d.id === currentDiscipline)?.name}
+                  </span>
+                )}
               </label>
               {!currentBirthday && (
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                  Veuillez d'abord renseigner votre date de naissance
+                  Veuillez renseigner votre date de naissance
                 </p>
               )}
-              {!currentDiscipline && currentBirthday && (
+              {!currentTemporality && currentBirthday && (
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                  Veuillez d'abord sélectionner une discipline
+                  Veuillez sélectionner une temporalité
+                </p>
+              )}
+              {!currentDiscipline && currentTemporality && currentBirthday && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  Veuillez sélectionner une discipline
                 </p>
               )}
               <select
@@ -666,7 +773,9 @@ export default function InscriptionForm() {
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={createSelectChangeHandler(field.handleChange)}
-                disabled={isLoadingPlans || !currentBirthday || !currentDiscipline}
+                disabled={
+                  isLoadingPlans || !currentBirthday || !currentTemporality || !currentDiscipline
+                }
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="">
@@ -676,11 +785,19 @@ export default function InscriptionForm() {
                       ? 'Aucune formule disponible'
                       : 'Sélectionner...'}
                 </option>
-                {filteredPlans.map((plan) => (
-                  <option key={plan.id} value={plan.id}>
-                    {plan.name} - {plan.price}€ ({plan.type})
-                  </option>
-                ))}
+                {filteredPlans.map((plan) => {
+                  const audienceLabel =
+                    plan.audience === 'reduced'
+                      ? "Tarif réduit (Étudiants/Forces de l'ordre/Anciens adhérents)"
+                      : plan.audience === 'adult'
+                        ? 'Tarif normal'
+                        : '';
+                  return (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.price}€ - {audienceLabel}
+                    </option>
+                  );
+                })}
               </select>
               {field.state.meta.errors.length > 0 && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -691,7 +808,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Submit Button */}
         <div className="pt-4">
           <button
             type="submit"
