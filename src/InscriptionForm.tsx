@@ -11,18 +11,11 @@ import {
 } from './lib/supabase';
 import { getAgeGroupFromBirthday } from './utils/ageUtils';
 
-// Utility function to format date input as DD/MM/YYYY
 const formatDateInput = (value: string, previousValue: string): string => {
-  // Remove all non-digits
   const digits = value.replace(/\D/g, '');
-
-  // Limit to 8 digits (DDMMYYYY)
   const limitedDigits = digits.slice(0, 8);
-
-  // Check if user is deleting (going backwards)
   const isDeleting = value.length < previousValue.length;
 
-  // Add slashes at appropriate positions
   if (limitedDigits.length >= 4) {
     const formatted = `${limitedDigits.slice(0, 2)}/${limitedDigits.slice(2, 4)}/${limitedDigits.slice(4)}`;
     return formatted;
@@ -146,7 +139,6 @@ export default function InscriptionForm() {
       try {
         const validated = formSchema.parse(value);
 
-        // Convert birthday from DD/MM/YYYY to YYYY-MM-DD
         const birthDateISO = convertToISODate(validated.birthday);
 
         const genderMap: Record<'homme' | 'femme', 'male' | 'female'> = {
@@ -209,21 +201,18 @@ export default function InscriptionForm() {
       const disciplineMatch = plan.discipline_id === currentDiscipline;
       if (!disciplineMatch) return false;
 
-      // Filter by age group (audience)
       let audienceMatch = false;
       if (ageGroup === 'enfant') {
         audienceMatch = plan.audience === 'child';
       } else if (ageGroup === 'ado') {
         audienceMatch = plan.audience === 'teen';
       } else {
-        // adulte - match 'adult' and 'reduced' (students, etc.)
         audienceMatch = plan.audience === 'adult' || plan.audience === 'reduced';
       }
 
       return audienceMatch;
     });
 
-    // Deduplicate by price and audience (in case of duplicate DB entries)
     const uniquePlans = filtered.reduce((acc, plan) => {
       const key = `${plan.price}-${plan.audience}`;
       if (!acc.has(key)) {
@@ -244,8 +233,6 @@ export default function InscriptionForm() {
     [form]
   );
 
-  // Create stable change handlers
-  // Using a generic type parameter to preserve TanStack Form's exact type
   const createTextChangeHandler = useCallback(
     <T,>(handleChange: (value: T) => void) =>
       (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -262,47 +249,39 @@ export default function InscriptionForm() {
     []
   );
 
-  // Birthday change handler with date formatting and state updates
   const handleBirthdayChange = useCallback(
     (fieldHandleChange: (value: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
       const formatted = formatDateInput(e.target.value, form.getFieldValue('birthday'));
       fieldHandleChange(formatted);
       setCurrentBirthday(formatted);
-      // Reset subscription plan when birthday changes (age group might change)
       form.setFieldValue('subscriptionPlan', '');
     },
     [form]
   );
 
-  // Temporality change handler with state updates
   const handleTemporalityRadioChange = useCallback(
     (value: string) => {
       const temporalityValue = value as FormData['temporality'];
       form.setFieldValue('temporality', temporalityValue);
       setCurrentTemporality(value);
-      // Reset subscription plan when temporality changes
       form.setFieldValue('subscriptionPlan', '');
     },
     [form]
   );
 
-  // Discipline change handler with state updates
   const handleDisciplineRadioChange = useCallback(
     (value: string) => {
       form.setFieldValue('discipline', value);
       setCurrentDiscipline(value);
-      // Reset subscription plan when discipline changes
       form.setFieldValue('subscriptionPlan', '');
     },
     [form]
   );
 
-  // Get unique temporalities from subscription plans based on audience
   const availableTemporalities = useMemo(() => {
     const temporalityTypes = new Set<string>();
 
     subscriptionPlans.forEach((plan) => {
-      // Map age group to audience
       if (ageGroup) {
         let audienceMatch = false;
         if (ageGroup === 'enfant') {
@@ -310,14 +289,12 @@ export default function InscriptionForm() {
         } else if (ageGroup === 'ado') {
           audienceMatch = plan.audience === 'teen';
         } else {
-          // adulte - match 'adult' and 'reduced' (students, etc.)
           audienceMatch = plan.audience === 'adult' || plan.audience === 'reduced';
         }
         if (audienceMatch) {
           temporalityTypes.add(plan.type);
         }
       } else {
-        // No birthday, show all temporalities
         temporalityTypes.add(plan.type);
       }
     });
@@ -325,14 +302,10 @@ export default function InscriptionForm() {
     return Array.from(temporalityTypes);
   }, [ageGroup, subscriptionPlans]);
 
-  // Get all active disciplines (not filtered by plans since all plans use same discipline_id)
-  // We show all disciplines and filter plans when user selects
   const availableDisciplines = useMemo(() => {
-    // Simply return all active disciplines
     return disciplines;
   }, [disciplines]);
 
-  // Temporality labels for display
   const temporalityLabels: Record<string, string> = {
     season: 'Saison complète',
     yearly: 'Année',
@@ -347,7 +320,6 @@ export default function InscriptionForm() {
         Formulaire d'inscription
       </h2>
 
-      {/* Success Message */}
       {submitSuccess && (
         <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
           <p className="text-green-800 dark:text-green-200 font-medium">
@@ -356,7 +328,6 @@ export default function InscriptionForm() {
         </div>
       )}
 
-      {/* Error Message */}
       {submitError && (
         <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
           <p className="text-red-800 dark:text-red-200 font-medium">✗ {submitError}</p>
@@ -364,7 +335,6 @@ export default function InscriptionForm() {
       )}
 
       <form onSubmit={handleFormSubmit} className="space-y-4">
-        {/* Firstname */}
         <form.Field
           name="firstname"
           validators={{
@@ -402,7 +372,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Lastname */}
         <form.Field
           name="lastname"
           validators={{
@@ -440,7 +409,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Birthday */}
         <form.Field
           name="birthday"
           validators={{
@@ -479,7 +447,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Genre */}
         <form.Field
           name="genre"
           validators={{
@@ -520,7 +487,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Phone */}
         <form.Field
           name="phone"
           validators={{
@@ -559,7 +525,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Urgency Phone */}
         <form.Field
           name="urgencyPhone"
           validators={{
@@ -598,7 +563,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Email */}
         <form.Field
           name="email"
           validators={{
@@ -637,7 +601,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Temporality */}
         <form.Field
           name="temporality"
           validators={{
@@ -697,7 +660,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Discipline */}
         <form.Field
           name="discipline"
           validators={{
@@ -757,7 +719,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Subscription Plan */}
         <form.Field
           name="subscriptionPlan"
           validators={{
@@ -845,7 +806,6 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        {/* Submit Button */}
         <div className="pt-4">
           <button
             type="submit"

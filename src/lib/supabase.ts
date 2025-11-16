@@ -118,7 +118,6 @@ export async function insertMemberWithSubscription(
   planId: string
 ) {
   try {
-    // 1. Insert the member
     const { data: member, error: memberError } = await supabase
       .from('members')
       .insert({
@@ -137,7 +136,6 @@ export async function insertMemberWithSubscription(
       throw new Error("Aucune donnée retournée après l'insertion du membre");
     }
 
-    // 2. Get subscription plan details
     const { data: plan, error: planError } = await supabase
       .from('subscription_plans')
       .select('duration, price')
@@ -153,7 +151,6 @@ export async function insertMemberWithSubscription(
       throw new Error("Plan d'abonnement introuvable");
     }
 
-    // 3. Create subscription
     const startDate = new Date().toISOString().split('T')[0];
     const endDate = calculateEndDate(startDate, plan.duration);
 
@@ -167,7 +164,6 @@ export async function insertMemberWithSubscription(
       end_date: endDate,
       notes: 'Abonnement créé depuis formulaire web',
     };
-    console.log(subscriptionData);
 
     const { data: subscription, error: subscriptionError } = await supabase
       .from('subscriptions')
