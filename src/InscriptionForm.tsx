@@ -259,8 +259,9 @@ export default function InscriptionForm() {
     [form]
   );
 
-  const handleTemporalityRadioChange = useCallback(
-    (value: string) => {
+  const handleTemporalityChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
       const temporalityValue = value as FormData['temporality'];
       form.setFieldValue('temporality', temporalityValue);
       setCurrentTemporality(value);
@@ -269,8 +270,9 @@ export default function InscriptionForm() {
     [form]
   );
 
-  const handleDisciplineRadioChange = useCallback(
-    (value: string) => {
+  const handleDisciplineChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
       form.setFieldValue('discipline', value);
       setCurrentDiscipline(value);
       form.setFieldValue('subscriptionPlan', '');
@@ -641,7 +643,7 @@ export default function InscriptionForm() {
                         name="temporality"
                         value={type}
                         checked={field.state.value === type}
-                        onChange={(e) => handleTemporalityRadioChange(e.target.value)}
+                        onChange={handleTemporalityChange}
                         className="w-4 h-4 text-purple-600 focus:ring-purple-500"
                       />
                       <span className="ml-3 text-gray-700 dark:text-gray-300">
@@ -700,7 +702,7 @@ export default function InscriptionForm() {
                         value={discipline.id}
                         checked={field.state.value === discipline.id}
                         disabled={isLoadingDisciplines}
-                        onChange={(e) => handleDisciplineRadioChange(e.target.value)}
+                        onChange={handleDisciplineChange}
                         className="w-4 h-4 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
                       />
                       <span className="ml-3 text-gray-700 dark:text-gray-300">

@@ -141,7 +141,6 @@ export async function insertMemberWithSubscription(
       .select('duration, price')
       .eq('id', planId)
       .single();
-    console.log({ plan });
 
     if (planError) {
       throw new Error(`Erreur lors de la récupération du plan: ${planError.message}`);
@@ -172,7 +171,6 @@ export async function insertMemberWithSubscription(
       .single();
 
     if (subscriptionError) {
-      console.log(subscriptionError);
       throw new Error(`Erreur lors de l'insertion de l'abonnement: ${subscriptionError.message}`);
     }
 
