@@ -18,9 +18,10 @@ export interface SubscriptionPlan {
   id: string;
   name: string;
   type: 'season' | 'semester1' | 'quarter' | 'month' | 'yearly';
-  season_label: string;
+  duration: 'season' | 'semester1' | 'quarter' | 'month' | 'yearly';
   price: number;
   discipline_id: string;
+  audience: 'adult' | 'reduced' | 'teen' | 'child';
   active: boolean;
 }
 
@@ -59,8 +60,6 @@ export interface Member {
 export interface SubscriptionInsert {
   member_id: string;
   plan_id: string;
-  season_label: string;
-  type: string;
   price: number;
   payment_status: 'pending' | 'paid' | 'failed' | 'refunded';
   payment_method: 'card';
@@ -116,8 +115,7 @@ export function generateTempStripeId(): string {
  */
 export async function insertMemberWithSubscription(
   memberData: Omit<MemberInsert, 'stripe_customer_id' | 'is_active'>,
-  planId: string,
-  seasonLabel: string
+  planId: string
 ) {
   try {
     // 1. Insert the member
@@ -142,9 +140,10 @@ export async function insertMemberWithSubscription(
     // 2. Get subscription plan details
     const { data: plan, error: planError } = await supabase
       .from('subscription_plans')
-      .select('*')
+      .select('duration, price')
       .eq('id', planId)
       .single();
+    console.log({ plan });
 
     if (planError) {
       throw new Error(`Erreur lors de la récupération du plan: ${planError.message}`);
@@ -156,13 +155,11 @@ export async function insertMemberWithSubscription(
 
     // 3. Create subscription
     const startDate = new Date().toISOString().split('T')[0];
-    const endDate = calculateEndDate(startDate, plan.type);
+    const endDate = calculateEndDate(startDate, plan.duration);
 
     const subscriptionData: SubscriptionInsert = {
       member_id: member.id,
       plan_id: planId,
-      season_label: seasonLabel,
-      type: plan.type,
       price: plan.price,
       payment_status: 'pending',
       payment_method: 'card',
@@ -170,6 +167,7 @@ export async function insertMemberWithSubscription(
       end_date: endDate,
       notes: 'Abonnement créé depuis formulaire web',
     };
+    console.log(subscriptionData);
 
     const { data: subscription, error: subscriptionError } = await supabase
       .from('subscriptions')
@@ -178,6 +176,7 @@ export async function insertMemberWithSubscription(
       .single();
 
     if (subscriptionError) {
+      console.log(subscriptionError);
       throw new Error(`Erreur lors de l'insertion de l'abonnement: ${subscriptionError.message}`);
     }
 
