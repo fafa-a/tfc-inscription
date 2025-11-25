@@ -1,5 +1,3 @@
-import { supabase } from '../lib/supabase';
-
 const MAX_FILE_SIZE = 1024 * 1024; // 1MB in bytes
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png'];
 
@@ -40,6 +38,9 @@ export async function uploadIdentityPhoto(
   memberId: string
 ): Promise<{ success: boolean; path?: string; error?: string }> {
   try {
+    // Lazy load supabase only when needed
+    const { supabase } = await import('../lib/supabase');
+
     // Validate file first
     const validation = validateImageFile(file);
     if (!validation.valid) {
@@ -74,7 +75,8 @@ export async function uploadIdentityPhoto(
 /**
  * Gets the public URL for an identity photo
  */
-export function getIdentityPhotoUrl(path: string): string {
+export async function getIdentityPhotoUrl(path: string): Promise<string> {
+  const { supabase } = await import('../lib/supabase');
   const { data } = supabase.storage.from('avatars').getPublicUrl(path.replace('avatars/', ''));
   return data.publicUrl;
 }
