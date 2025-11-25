@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { uploadIdentityPhoto } from '../utils/uploadPhoto';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -38,6 +39,7 @@ export interface MemberInsert {
   discipline_id: string;
   stripe_customer_id: string;
   is_active: boolean;
+  identity_photo_path?: string;
   notes?: string;
 }
 
@@ -53,6 +55,7 @@ export interface Member {
   discipline_id: string;
   stripe_customer_id: string;
   is_active: boolean;
+  identity_photo_path?: string;
   notes?: string;
   created_at: string;
 }
@@ -112,18 +115,33 @@ export function generateTempStripeId(): string {
 
 /**
  * Inserts a new member and their subscription into the database
+ * Generates a UUID for the member, uploads the photo first, then inserts with the photo path
  */
 export async function insertMemberWithSubscription(
-  memberData: Omit<MemberInsert, 'stripe_customer_id' | 'is_active'>,
-  planId: string
+  memberData: Omit<MemberInsert, 'stripe_customer_id' | 'is_active' | 'identity_photo_path'>,
+  planId: string,
+  identityPhoto: File
 ) {
   try {
+    // 1. Generate UUID for the member
+    const memberId = crypto.randomUUID();
+
+    // 2. Upload identity photo first
+    const uploadResult = await uploadIdentityPhoto(identityPhoto, memberId);
+
+    if (!uploadResult.success) {
+      throw new Error(uploadResult.error || "Erreur lors de l'upload de la photo");
+    }
+
+    // 3. Insert member with explicit ID and photo path
     const { data: member, error: memberError } = await supabase
       .from('members')
       .insert({
+        id: memberId,
         ...memberData,
         stripe_customer_id: generateTempStripeId(),
         is_active: true,
+        identity_photo_path: uploadResult.path,
       })
       .select()
       .single();

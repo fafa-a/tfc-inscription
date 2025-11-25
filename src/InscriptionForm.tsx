@@ -10,6 +10,7 @@ import {
   supabase,
 } from './lib/supabase';
 import { getAgeGroupFromBirthday } from './utils/ageUtils';
+import { validateImageFile } from './utils/uploadPhoto';
 
 const formatDateInput = (value: string, previousValue: string): string => {
   const digits = value.replace(/\D/g, '');
@@ -69,6 +70,15 @@ const formSchema = z.object({
   }),
   discipline: z.string().min(1, 'Veuillez sélectionner une discipline'),
   subscriptionPlan: z.string().min(1, 'Veuillez sélectionner une formule'),
+  identityPhoto: z.instanceof(File, { message: "La photo d'identité est requise" }).refine(
+    (file) => {
+      const validation = validateImageFile(file);
+      return validation.valid;
+    },
+    {
+      message: 'Veuillez sélectionner une photo valide',
+    }
+  ),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -84,6 +94,7 @@ export default function InscriptionForm() {
   const [currentBirthday, setCurrentBirthday] = useState('');
   const [currentTemporality, setCurrentTemporality] = useState('');
   const [currentDiscipline, setCurrentDiscipline] = useState('');
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -130,6 +141,7 @@ export default function InscriptionForm() {
       temporality: '' as FormData['temporality'] | '',
       discipline: '',
       subscriptionPlan: '',
+      identityPhoto: undefined as File | undefined,
     },
     onSubmit: async ({ value }) => {
       setIsSubmitting(true);
@@ -158,7 +170,11 @@ export default function InscriptionForm() {
           notes: 'Inscription web',
         };
 
-        const result = await insertMemberWithSubscription(memberData, validated.subscriptionPlan);
+        const result = await insertMemberWithSubscription(
+          memberData,
+          validated.subscriptionPlan,
+          validated.identityPhoto
+        );
 
         if (!result.success) {
           throw new Error(result.error || "Erreur lors de l'inscription");
@@ -170,6 +186,7 @@ export default function InscriptionForm() {
         setCurrentBirthday('');
         setCurrentTemporality('');
         setCurrentDiscipline('');
+        setPhotoPreview(null);
       } catch (error) {
         if (error instanceof z.ZodError) {
           setSubmitError('Veuillez vérifier tous les champs du formulaire');
@@ -278,6 +295,23 @@ export default function InscriptionForm() {
       form.setFieldValue('subscriptionPlan', '');
     },
     [form]
+  );
+
+  const handlePhotoChange = useCallback(
+    (handleChange: (value: File | undefined) => void) =>
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+          handleChange(file);
+          // Create preview URL
+          const previewUrl = URL.createObjectURL(file);
+          setPhotoPreview(previewUrl);
+        } else {
+          handleChange(undefined);
+          setPhotoPreview(null);
+        }
+      },
+    []
   );
 
   const availableTemporalities = useMemo(() => {
@@ -594,6 +628,64 @@ export default function InscriptionForm() {
                 onChange={createTextChangeHandler(field.handleChange)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               />
+              {field.state.meta.errors.length > 0 && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                  {field.state.meta.errors.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
+        </form.Field>
+
+        <form.Field
+          name="identityPhoto"
+          validators={{
+            onChange: ({ value }) => {
+              if (!value) {
+                return "La photo d'identité est requise";
+              }
+              const validation = validateImageFile(value);
+              if (!validation.valid) {
+                return validation.error;
+              }
+              return undefined;
+            },
+          }}
+        >
+          {(field) => (
+            <div>
+              <label
+                htmlFor="identityPhoto"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
+                Photo d'identité *
+              </label>
+              <input
+                id="identityPhoto"
+                type="file"
+                accept="image/jpeg,image/png"
+                required
+                onChange={handlePhotoChange(field.handleChange)}
+                onBlur={field.handleBlur}
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 dark:file:bg-purple-900 dark:file:text-purple-200 ${
+                  field.state.meta.errors.length > 0
+                    ? 'border-red-500 dark:border-red-500'
+                    : 'border-gray-300 dark:border-gray-600'
+                }`}
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Formats acceptés : <strong>JPEG ou PNG uniquement</strong>. Taille max : 1 Mo
+              </p>
+              {photoPreview && (
+                <div className="mt-3">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Aperçu :</p>
+                  <img
+                    src={photoPreview}
+                    alt="Aperçu de l'identité sélectionnée"
+                    className="w-32 h-32 object-cover rounded-lg border-2 border-gray-300 dark:border-gray-600"
+                  />
+                </div>
+              )}
               {field.state.meta.errors.length > 0 && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
                   {field.state.meta.errors.join(', ')}
