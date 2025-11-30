@@ -351,7 +351,8 @@ export default function InscriptionForm() {
   );
 
   const handleEmailBlur = useCallback(
-    async (fieldHandleBlur: () => void, email: string) => {
+    (fieldHandleBlur: () => void) => async () => {
+      const email = form.getFieldValue('email');
       fieldHandleBlur(); // Call form's blur handler first
 
       if (!email || !z.string().email().safeParse(email).success) {
@@ -807,7 +808,7 @@ export default function InscriptionForm() {
                 type="email"
                 placeholder="exemple@email.com"
                 value={field.state.value}
-                onBlur={() => handleEmailBlur(field.handleBlur, field.state.value)}
+                onBlur={handleEmailBlur(field.handleBlur)}
                 onChange={createTextChangeHandler(field.handleChange)}
                 disabled={isReturningMember}
                 className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${

@@ -127,7 +127,7 @@ export async function checkMemberByEmail(email: string) {
   }
 
   return {
-    exists: !!data,
+    exists: Boolean(data),
     memberData: data || null,
   };
 }
