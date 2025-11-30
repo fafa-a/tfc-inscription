@@ -5,12 +5,13 @@ import {
   type AgeGroup,
   type Discipline,
   type SubscriptionPlan,
+  checkMemberByEmail,
   convertToISODate,
   insertMemberWithSubscriptions,
   supabase,
 } from './lib/supabase';
 import { getAgeGroupFromBirthday } from './utils/ageUtils';
-import { validateImageFile } from './utils/uploadPhoto';
+import { uploadIdentityPhoto, validateImageFile } from './utils/uploadPhoto';
 
 const formatDateInput = (value: string, previousValue: string): string => {
   const digits = value.replace(/\D/g, '');
@@ -96,6 +97,19 @@ export default function InscriptionForm() {
   const [currentBirthday, setCurrentBirthday] = useState('');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
+  // Member detection state
+  const [isReturningMember, setIsReturningMember] = useState(false);
+  const [existingMemberData, setExistingMemberData] = useState<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    birth_date: string;
+    gender: 'male' | 'female';
+    phone: string;
+    emergency_phone: string;
+  } | null>(null);
+  const [wasReturningMember, setWasReturningMember] = useState(false);
+
   // Selected subscriptions list (separate from form)
   const [selectedSubscriptions, setSelectedSubscriptions] = useState<SelectedSubscription[]>([]);
 
@@ -179,10 +193,20 @@ export default function InscriptionForm() {
 
         const planIds = selectedSubscriptions.map((sub) => sub.planId);
 
+        // Upload photo first (frontend)
+        const memberId = existingMemberData?.id || crypto.randomUUID();
+
+        const photoUploadResult = await uploadIdentityPhoto(validated.identityPhoto, memberId);
+
+        if (!photoUploadResult.success) {
+          throw new Error(photoUploadResult.error || "Erreur lors de l'upload de la photo");
+        }
+
+        // Submit form with photo path
         const result = await insertMemberWithSubscriptions(
           memberData,
           planIds,
-          validated.identityPhoto
+          photoUploadResult.path || ''
         );
 
         if (!result.success) {
@@ -190,6 +214,7 @@ export default function InscriptionForm() {
         }
 
         setSubmitSuccess(true);
+        setWasReturningMember(isReturningMember);
 
         form.reset();
         setCurrentBirthday('');
@@ -198,6 +223,8 @@ export default function InscriptionForm() {
         setBuilderTemporality('');
         setBuilderSelectedPlans([]);
         setPhotoPreview(null);
+        setIsReturningMember(false);
+        setExistingMemberData(null);
       } catch (error) {
         if (error instanceof z.ZodError) {
           setSubmitError('Veuillez vérifier tous les champs du formulaire');
@@ -229,21 +256,33 @@ export default function InscriptionForm() {
       // Match temporality
       if (plan.type !== builderTemporality) return false;
 
-      // Match age group
+      // Match age group and member type
       let audienceMatch = false;
       if (ageGroup === 'enfant') {
         audienceMatch = plan.audience === 'child';
       } else if (ageGroup === 'ado') {
         audienceMatch = plan.audience === 'teen';
       } else {
-        audienceMatch = plan.audience === 'adult' || plan.audience === 'reduced';
+        // Adults: show only reduced for returning members, only normal for new members
+        if (isReturningMember) {
+          audienceMatch = plan.audience === 'reduced';
+        } else {
+          audienceMatch = plan.audience === 'adult';
+        }
       }
 
       return audienceMatch;
     });
 
     return filtered;
-  }, [currentBirthday, ageGroup, builderDiscipline, builderTemporality, subscriptionPlans]);
+  }, [
+    currentBirthday,
+    ageGroup,
+    builderDiscipline,
+    builderTemporality,
+    subscriptionPlans,
+    isReturningMember,
+  ]);
 
   const availableTemporalities = useMemo(() => {
     if (!currentBirthday || !ageGroup || !builderDiscipline) {
@@ -261,7 +300,12 @@ export default function InscriptionForm() {
       } else if (ageGroup === 'ado') {
         audienceMatch = plan.audience === 'teen';
       } else {
-        audienceMatch = plan.audience === 'adult' || plan.audience === 'reduced';
+        // Adults: show only reduced for returning members, only normal for new members
+        if (isReturningMember) {
+          audienceMatch = plan.audience === 'reduced';
+        } else {
+          audienceMatch = plan.audience === 'adult';
+        }
       }
 
       if (audienceMatch) {
@@ -270,7 +314,7 @@ export default function InscriptionForm() {
     });
 
     return Array.from(temporalitySet);
-  }, [currentBirthday, ageGroup, builderDiscipline, subscriptionPlans]);
+  }, [currentBirthday, ageGroup, builderDiscipline, subscriptionPlans, isReturningMember]);
 
   const handleFormSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -302,6 +346,55 @@ export default function InscriptionForm() {
       const formatted = formatDateInput(e.target.value, form.getFieldValue('birthday'));
       fieldHandleChange(formatted);
       setCurrentBirthday(formatted);
+    },
+    [form]
+  );
+
+  const handleEmailBlur = useCallback(
+    (fieldHandleBlur: () => void) => async () => {
+      const email = form.getFieldValue('email');
+      fieldHandleBlur(); // Call form's blur handler first
+
+      if (!email || !z.string().email().safeParse(email).success) {
+        return; // Don't check if email is invalid
+      }
+
+      try {
+        const result = await checkMemberByEmail(email);
+
+        if (result.exists && result.memberData) {
+          setIsReturningMember(true);
+          setExistingMemberData(result.memberData);
+
+          // Pre-fill form fields
+          const genderMap: Record<'male' | 'female', 'homme' | 'femme'> = {
+            male: 'homme',
+            female: 'femme',
+          };
+
+          form.setFieldValue('firstname', result.memberData.first_name);
+          form.setFieldValue('lastname', result.memberData.last_name);
+          form.setFieldValue('phone', result.memberData.phone);
+          form.setFieldValue('urgencyPhone', result.memberData.emergency_phone);
+          const mappedGender = genderMap[result.memberData.gender as 'male' | 'female'];
+          if (mappedGender) {
+            form.setFieldValue('genre', mappedGender);
+          }
+
+          // Convert birth_date from YYYY-MM-DD to DD/MM/YYYY
+          const [year, month, day] = result.memberData.birth_date.split('-');
+          const formattedBirthday = `${day}/${month}/${year}`;
+          form.setFieldValue('birthday', formattedBirthday);
+          setCurrentBirthday(formattedBirthday);
+        } else {
+          setIsReturningMember(false);
+          setExistingMemberData(null);
+        }
+      } catch (error) {
+        // Silently fail - don't block form submission
+        setIsReturningMember(false);
+        setExistingMemberData(null);
+      }
     },
     [form]
   );
@@ -413,10 +506,20 @@ export default function InscriptionForm() {
         Formulaire d'inscription
       </h2>
 
+      {!isReturningMember && !submitSuccess && (
+        <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+          <p className="text-purple-800 dark:text-purple-200 text-sm">
+            💡 <strong>Anciens membres :</strong> Commencez par renseigner votre email pour
+            pré-remplir vos informations
+          </p>
+        </div>
+      )}
+
       {submitSuccess && (
         <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
           <p className="text-green-800 dark:text-green-200 font-medium">
-            ✓ Inscription réussie ! Votre demande a été enregistrée.
+            ✓ {wasReturningMember ? 'Réinscription' : 'Inscription'} réussie ! Votre demande a été
+            enregistrée.
           </p>
         </div>
       )}
@@ -424,6 +527,15 @@ export default function InscriptionForm() {
       {submitError && (
         <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
           <p className="text-red-800 dark:text-red-200 font-medium">✗ {submitError}</p>
+        </div>
+      )}
+
+      {isReturningMember && !submitSuccess && (
+        <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <p className="text-blue-800 dark:text-blue-200 font-medium">
+            ℹ️ Ancien membre détecté - Veuillez vérifier vos informations et télécharger une nouvelle
+            photo d'identité pour votre réinscription
+          </p>
         </div>
       )}
 
@@ -454,7 +566,12 @@ export default function InscriptionForm() {
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={createTextChangeHandler(field.handleChange)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                disabled={isReturningMember}
+                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
+                  isReturningMember
+                    ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
+                    : ''
+                }`}
               />
               {field.state.meta.errors.length > 0 && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -529,7 +646,12 @@ export default function InscriptionForm() {
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={handleBirthdayChange(field.handleChange)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                disabled={isReturningMember}
+                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
+                  isReturningMember
+                    ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
+                    : ''
+                }`}
               />
               {field.state.meta.errors.length > 0 && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -565,7 +687,12 @@ export default function InscriptionForm() {
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={createSelectChangeHandler(field.handleChange)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                disabled={isReturningMember}
+                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
+                  isReturningMember
+                    ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
+                    : ''
+                }`}
               >
                 <option value="">Sélectionner...</option>
                 <option value="homme">Homme</option>
@@ -681,9 +808,14 @@ export default function InscriptionForm() {
                 type="email"
                 placeholder="exemple@email.com"
                 value={field.state.value}
-                onBlur={field.handleBlur}
+                onBlur={handleEmailBlur(field.handleBlur)}
                 onChange={createTextChangeHandler(field.handleChange)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                disabled={isReturningMember}
+                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
+                  isReturningMember
+                    ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
+                    : ''
+                }`}
               />
               {field.state.meta.errors.length > 0 && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">

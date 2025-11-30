@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { uploadIdentityPhoto } from '../utils/uploadPhoto';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -114,8 +113,30 @@ export function generateTempStripeId(): string {
 }
 
 /**
+ * Checks if a member exists by email and returns their data
+ */
+export async function checkMemberByEmail(email: string) {
+  const { data, error } = await supabase
+    .from('members')
+    .select('id, first_name, last_name, birth_date, gender, phone, emergency_phone')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Erreur lors de la recherche: ${error.message}`);
+  }
+
+  return {
+    exists: Boolean(data),
+    memberData: data || null,
+  };
+}
+
+/**
  * Inserts or updates a member and creates multiple subscriptions
- * Upserts member by email, uploads photo if new member, creates one subscription per plan
+ * Upserts member by email, creates one subscription per plan
+ * For new members: inserts all data
+ * For returning members: updates only last_name, phone, emergency_phone, and photo path
  */
 export async function insertMemberWithSubscriptions(
   memberData: Omit<
@@ -123,7 +144,7 @@ export async function insertMemberWithSubscriptions(
     'stripe_customer_id' | 'is_active' | 'identity_photo_path' | 'discipline_id'
   >,
   planIds: string[],
-  identityPhoto: File
+  identityPhotoPath: string
 ) {
   try {
     if (planIds.length === 0) {
@@ -133,7 +154,7 @@ export async function insertMemberWithSubscriptions(
     // 1. Check if member exists by email
     const { data: existingMember, error: searchError } = await supabase
       .from('members')
-      .select('id, identity_photo_path')
+      .select('id')
       .eq('email', memberData.email)
       .maybeSingle();
 
@@ -142,32 +163,36 @@ export async function insertMemberWithSubscriptions(
     }
 
     let memberId: string;
-    let photoPath: string | undefined;
 
     if (existingMember) {
-      // Member exists - use existing ID and photo
+      // Returning member - UPDATE only allowed fields
       memberId = existingMember.id;
-      photoPath = existingMember.identity_photo_path || undefined;
+
+      const { error: updateError } = await supabase
+        .from('members')
+        .update({
+          last_name: memberData.last_name,
+          phone: memberData.phone,
+          emergency_phone: memberData.emergency_phone,
+          identity_photo_path: identityPhotoPath,
+          notes: memberData.notes,
+        })
+        .eq('id', memberId);
+
+      if (updateError) {
+        throw new Error(`Erreur lors de la mise à jour du membre: ${updateError.message}`);
+      }
     } else {
-      // New member - generate ID and upload photo
+      // New member - INSERT with all fields
       memberId = crypto.randomUUID();
 
-      const uploadResult = await uploadIdentityPhoto(identityPhoto, memberId);
-
-      if (!uploadResult.success) {
-        throw new Error(uploadResult.error || "Erreur lors de l'upload de la photo");
-      }
-
-      photoPath = uploadResult.path;
-
-      // Insert new member
       const { error: memberError } = await supabase.from('members').insert({
         id: memberId,
         ...memberData,
         discipline_id: null,
         stripe_customer_id: generateTempStripeId(),
         is_active: true,
-        identity_photo_path: photoPath,
+        identity_photo_path: identityPhotoPath,
       });
 
       if (memberError) {
