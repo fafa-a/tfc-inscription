@@ -6,7 +6,7 @@ import {
   type Discipline,
   type SubscriptionPlan,
   convertToISODate,
-  insertMemberWithSubscription,
+  insertMemberWithSubscriptions,
   supabase,
 } from './lib/supabase';
 import { getAgeGroupFromBirthday } from './utils/ageUtils';
@@ -65,11 +65,6 @@ const formSchema = z.object({
     .length(10, "Le numéro d'urgence doit contenir 10 chiffres")
     .regex(/^[0-9]+$/, 'Le numéro doit contenir uniquement des chiffres'),
   email: z.email('Adresse email invalide'),
-  temporality: z.enum(['season', 'semester1', 'quarter', 'month', 'yearly'], {
-    message: 'Veuillez sélectionner une temporalité',
-  }),
-  discipline: z.string().min(1, 'Veuillez sélectionner une discipline'),
-  subscriptionPlan: z.string().min(1, 'Veuillez sélectionner une formule'),
   identityPhoto: z.instanceof(File, { message: "La photo d'identité est requise" }).refine(
     (file) => {
       const validation = validateImageFile(file);
@@ -81,20 +76,33 @@ const formSchema = z.object({
   ),
 });
 
+interface SelectedSubscription {
+  planId: string;
+  disciplineId: string;
+  disciplineName: string;
+  duration: string;
+  price: number;
+  audience: string;
+}
+
 type FormData = z.infer<typeof formSchema>;
 
 export default function InscriptionForm() {
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
-  const [isLoadingDisciplines, setIsLoadingDisciplines] = useState(true);
-  const [isLoadingPlans, setIsLoadingPlans] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [currentBirthday, setCurrentBirthday] = useState('');
-  const [currentTemporality, setCurrentTemporality] = useState('');
-  const [currentDiscipline, setCurrentDiscipline] = useState('');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  // Selected subscriptions list (separate from form)
+  const [selectedSubscriptions, setSelectedSubscriptions] = useState<SelectedSubscription[]>([]);
+
+  // Subscription builder state
+  const [builderDiscipline, setBuilderDiscipline] = useState('');
+  const [builderTemporality, setBuilderTemporality] = useState('');
+  const [builderSelectedPlans, setBuilderSelectedPlans] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -108,7 +116,6 @@ export default function InscriptionForm() {
       if (!disciplinesError && disciplinesData) {
         setDisciplines(disciplinesData);
       }
-      setIsLoadingDisciplines(false);
 
       const { data: plansData, error: plansError } = await supabase
         .from('subscription_plans')
@@ -123,7 +130,6 @@ export default function InscriptionForm() {
         }));
         setSubscriptionPlans(mappedPlans);
       }
-      setIsLoadingPlans(false);
     };
 
     fetchData();
@@ -138,9 +144,6 @@ export default function InscriptionForm() {
       phone: '',
       urgencyPhone: '',
       email: '',
-      temporality: '' as FormData['temporality'] | '',
-      discipline: '',
-      subscriptionPlan: '',
       identityPhoto: undefined as File | undefined,
     },
     onSubmit: async ({ value }) => {
@@ -149,6 +152,11 @@ export default function InscriptionForm() {
       setSubmitSuccess(false);
 
       try {
+        // Validate subscriptions are selected
+        if (selectedSubscriptions.length === 0) {
+          throw new Error("Veuillez ajouter au moins une formule d'abonnement");
+        }
+
         const validated = formSchema.parse(value);
 
         const birthDateISO = convertToISODate(validated.birthday);
@@ -166,13 +174,14 @@ export default function InscriptionForm() {
           phone: validated.phone,
           emergency_phone: validated.urgencyPhone,
           email: validated.email,
-          discipline_id: validated.discipline,
           notes: 'Inscription web',
         };
 
-        const result = await insertMemberWithSubscription(
+        const planIds = selectedSubscriptions.map((sub) => sub.planId);
+
+        const result = await insertMemberWithSubscriptions(
           memberData,
-          validated.subscriptionPlan,
+          planIds,
           validated.identityPhoto
         );
 
@@ -184,8 +193,10 @@ export default function InscriptionForm() {
 
         form.reset();
         setCurrentBirthday('');
-        setCurrentTemporality('');
-        setCurrentDiscipline('');
+        setSelectedSubscriptions([]);
+        setBuilderDiscipline('');
+        setBuilderTemporality('');
+        setBuilderSelectedPlans([]);
         setPhotoPreview(null);
       } catch (error) {
         if (error instanceof z.ZodError) {
@@ -207,17 +218,18 @@ export default function InscriptionForm() {
   }, [currentBirthday]);
 
   const filteredPlans = useMemo(() => {
-    if (!currentBirthday || !currentTemporality || !currentDiscipline || !ageGroup) {
+    if (!currentBirthday || !ageGroup || !builderDiscipline || !builderTemporality) {
       return [];
     }
 
     const filtered = subscriptionPlans.filter((plan) => {
-      const temporalityMatch = plan.type === currentTemporality;
-      if (!temporalityMatch) return false;
+      // Match discipline
+      if (plan.discipline_id !== builderDiscipline) return false;
 
-      const disciplineMatch = plan.discipline_id === currentDiscipline;
-      if (!disciplineMatch) return false;
+      // Match temporality
+      if (plan.type !== builderTemporality) return false;
 
+      // Match age group
       let audienceMatch = false;
       if (ageGroup === 'enfant') {
         audienceMatch = plan.audience === 'child';
@@ -230,16 +242,35 @@ export default function InscriptionForm() {
       return audienceMatch;
     });
 
-    const uniquePlans = filtered.reduce((acc, plan) => {
-      const key = `${plan.price}-${plan.audience}`;
-      if (!acc.has(key)) {
-        acc.set(key, plan);
-      }
-      return acc;
-    }, new Map<string, SubscriptionPlan>());
+    return filtered;
+  }, [currentBirthday, ageGroup, builderDiscipline, builderTemporality, subscriptionPlans]);
 
-    return Array.from(uniquePlans.values());
-  }, [currentBirthday, currentTemporality, currentDiscipline, ageGroup, subscriptionPlans]);
+  const availableTemporalities = useMemo(() => {
+    if (!currentBirthday || !ageGroup || !builderDiscipline) {
+      return [];
+    }
+
+    const temporalitySet = new Set<string>();
+
+    subscriptionPlans.forEach((plan) => {
+      if (plan.discipline_id !== builderDiscipline) return;
+
+      let audienceMatch = false;
+      if (ageGroup === 'enfant') {
+        audienceMatch = plan.audience === 'child';
+      } else if (ageGroup === 'ado') {
+        audienceMatch = plan.audience === 'teen';
+      } else {
+        audienceMatch = plan.audience === 'adult' || plan.audience === 'reduced';
+      }
+
+      if (audienceMatch) {
+        temporalitySet.add(plan.type);
+      }
+    });
+
+    return Array.from(temporalitySet);
+  }, [currentBirthday, ageGroup, builderDiscipline, subscriptionPlans]);
 
   const handleFormSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -271,30 +302,63 @@ export default function InscriptionForm() {
       const formatted = formatDateInput(e.target.value, form.getFieldValue('birthday'));
       fieldHandleChange(formatted);
       setCurrentBirthday(formatted);
-      form.setFieldValue('subscriptionPlan', '');
     },
     [form]
   );
 
-  const handleTemporalityChange = useCallback(
+  const handleBuilderPlanToggle = useCallback((planId: string) => {
+    setBuilderSelectedPlans((prev) =>
+      prev.includes(planId) ? prev.filter((id) => id !== planId) : [...prev, planId]
+    );
+  }, []);
+
+  const handlePlanCheckboxChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      const temporalityValue = value as FormData['temporality'];
-      form.setFieldValue('temporality', temporalityValue);
-      setCurrentTemporality(value);
-      form.setFieldValue('subscriptionPlan', '');
+      const planId = e.currentTarget.dataset.planId;
+      if (planId) {
+        handleBuilderPlanToggle(planId);
+      }
     },
-    [form]
+    [handleBuilderPlanToggle]
   );
 
-  const handleDisciplineChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      form.setFieldValue('discipline', value);
-      setCurrentDiscipline(value);
-      form.setFieldValue('subscriptionPlan', '');
+  const handleAddSubscriptions = useCallback(() => {
+    if (builderSelectedPlans.length === 0) return;
+
+    const newSubscriptions: SelectedSubscription[] = builderSelectedPlans.map((planId) => {
+      const plan = subscriptionPlans.find((p) => p.id === planId);
+      const discipline = disciplines.find((d) => d.id === builderDiscipline);
+
+      return {
+        planId,
+        disciplineId: builderDiscipline,
+        disciplineName: discipline?.name || '',
+        duration: plan?.duration || '',
+        price: plan?.price || 0,
+        audience: plan?.audience || '',
+      };
+    });
+
+    setSelectedSubscriptions((prev) => [...prev, ...newSubscriptions]);
+
+    // Reset builder
+    setBuilderDiscipline('');
+    setBuilderTemporality('');
+    setBuilderSelectedPlans([]);
+  }, [builderSelectedPlans, builderDiscipline, subscriptionPlans, disciplines]);
+
+  const handleRemoveSubscription = useCallback((planId: string) => {
+    setSelectedSubscriptions((prev) => prev.filter((sub) => sub.planId !== planId));
+  }, []);
+
+  const handleRemoveClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      const planId = e.currentTarget.dataset.planId;
+      if (planId) {
+        handleRemoveSubscription(planId);
+      }
     },
-    [form]
+    [handleRemoveSubscription]
   );
 
   const handlePhotoChange = useCallback(
@@ -303,7 +367,6 @@ export default function InscriptionForm() {
         const file = e.target.files?.[0];
         if (file) {
           handleChange(file);
-          // Create preview URL
           const previewUrl = URL.createObjectURL(file);
           setPhotoPreview(previewUrl);
         } else {
@@ -314,41 +377,35 @@ export default function InscriptionForm() {
     []
   );
 
-  const availableTemporalities = useMemo(() => {
-    const temporalityTypes = new Set<string>();
+  const handleDisciplineChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setBuilderDiscipline(e.target.value);
+    setBuilderTemporality('');
+    setBuilderSelectedPlans([]);
+  }, []);
 
-    subscriptionPlans.forEach((plan) => {
-      if (ageGroup) {
-        let audienceMatch = false;
-        if (ageGroup === 'enfant') {
-          audienceMatch = plan.audience === 'child';
-        } else if (ageGroup === 'ado') {
-          audienceMatch = plan.audience === 'teen';
-        } else {
-          audienceMatch = plan.audience === 'adult' || plan.audience === 'reduced';
-        }
-        if (audienceMatch) {
-          temporalityTypes.add(plan.type);
-        }
-      } else {
-        temporalityTypes.add(plan.type);
-      }
-    });
-
-    return Array.from(temporalityTypes);
-  }, [ageGroup, subscriptionPlans]);
-
-  const availableDisciplines = useMemo(() => {
-    return disciplines;
-  }, [disciplines]);
+  const handleTemporalityChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setBuilderTemporality(e.target.value);
+    setBuilderSelectedPlans([]);
+  }, []);
 
   const temporalityLabels: Record<string, string> = {
-    season: 'Saison complète',
+    season: 'Saison',
     yearly: 'Année',
     semester1: 'Semestre',
     quarter: 'Trimestre',
     month: 'Mois',
   };
+
+  const audienceLabels: Record<string, string> = {
+    adult: 'Adulte',
+    reduced: 'Tarif réduit',
+    teen: 'Ado',
+    child: 'Enfant',
+  };
+
+  const totalPrice = useMemo(() => {
+    return selectedSubscriptions.reduce((sum, sub) => sum + sub.price, 0);
+  }, [selectedSubscriptions]);
 
   return (
     <div className="w-full max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
@@ -695,46 +752,102 @@ export default function InscriptionForm() {
           )}
         </form.Field>
 
-        <form.Field
-          name="temporality"
-          validators={{
-            onChange: ({ value }) => {
-              const result = formSchema.shape.temporality.safeParse(value);
-              if (!result.success) {
-                return result.error.issues[0]?.message;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                Temporalité *
+        {/* Selected Subscriptions Summary */}
+        {selectedSubscriptions.length > 0 && (
+          <div className="border-2 border-purple-200 dark:border-purple-800 rounded-lg p-4 bg-purple-50 dark:bg-purple-900/20">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
+              Abonnements sélectionnés ({selectedSubscriptions.length})
+            </h3>
+            <div className="space-y-2">
+              {selectedSubscriptions.map((sub) => (
+                <div
+                  key={sub.planId}
+                  className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700"
+                >
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900 dark:text-gray-100">
+                      {sub.disciplineName} - {temporalityLabels[sub.duration] || sub.duration}
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {audienceLabels[sub.audience] || sub.audience}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                      {sub.price}€
+                    </span>
+                    <button
+                      type="button"
+                      data-plan-id={sub.planId}
+                      onClick={handleRemoveClick}
+                      className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 pt-3 border-t border-purple-300 dark:border-purple-700">
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-gray-800 dark:text-gray-200">Total:</span>
+                <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                  {totalPrice}€
+                </span>
               </div>
-              {isLoadingPlans && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                  Chargement des temporalités...
-                </p>
-              )}
-              <div className="space-y-2">
-                {availableTemporalities.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {subscriptionPlans.length === 0
-                      ? 'Aucun plan disponible dans la base de données'
-                      : 'Aucune temporalité disponible'}
-                  </p>
-                ) : (
-                  availableTemporalities.map((type) => (
+            </div>
+          </div>
+        )}
+
+        {/* Subscription Builder */}
+        {currentBirthday && (
+          <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
+              Ajouter un abonnement
+            </h3>
+
+            {/* Discipline Selection */}
+            <div className="mb-4">
+              <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Discipline *
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {disciplines.map((discipline) => (
+                  <label
+                    key={discipline.id}
+                    className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <input
+                      type="radio"
+                      name="builderDiscipline"
+                      value={discipline.id}
+                      checked={builderDiscipline === discipline.id}
+                      onChange={handleDisciplineChange}
+                      className="w-4 h-4 text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="ml-3 text-gray-700 dark:text-gray-300">{discipline.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Temporality Selection */}
+            {builderDiscipline && (
+              <div className="mb-4">
+                <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Durée *
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {availableTemporalities.map((type) => (
                     <label
                       key={type}
                       className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     >
                       <input
                         type="radio"
-                        name="temporality"
+                        name="builderTemporality"
                         value={type}
-                        checked={field.state.value === type}
+                        checked={builderTemporality === type}
                         onChange={handleTemporalityChange}
                         className="w-4 h-4 text-purple-600 focus:ring-purple-500"
                       />
@@ -742,168 +855,87 @@ export default function InscriptionForm() {
                         {temporalityLabels[type] || type}
                       </span>
                     </label>
-                  ))
-                )}
+                  ))}
+                </div>
               </div>
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
+            )}
 
-        <form.Field
-          name="discipline"
-          validators={{
-            onChange: ({ value }) => {
-              const result = formSchema.shape.discipline.safeParse(value);
-              if (!result.success) {
-                return result.error.issues[0]?.message;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                Discipline sportive *
-              </div>
-              <div className="space-y-2">
-                {isLoadingDisciplines ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Chargement...</p>
-                ) : availableDisciplines.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {disciplines.length === 0
-                      ? 'Aucune discipline dans la base de données'
-                      : subscriptionPlans.length === 0
-                        ? 'Aucun plan disponible dans la base de données'
-                        : 'Aucune discipline disponible'}
-                  </p>
-                ) : (
-                  availableDisciplines.map((discipline) => (
+            {/* Plan Selection */}
+            {builderTemporality && filteredPlans.length > 0 && (
+              <div className="mb-4">
+                <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Formule *
+                </div>
+                <div className="space-y-2">
+                  {filteredPlans.map((plan) => (
                     <label
-                      key={discipline.id}
-                      className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      key={plan.id}
+                      className="flex items-start p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     >
                       <input
-                        type="radio"
-                        name="discipline"
-                        value={discipline.id}
-                        checked={field.state.value === discipline.id}
-                        disabled={isLoadingDisciplines}
-                        onChange={handleDisciplineChange}
-                        className="w-4 h-4 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
+                        type="checkbox"
+                        data-plan-id={plan.id}
+                        checked={builderSelectedPlans.includes(plan.id)}
+                        onChange={handlePlanCheckboxChange}
+                        className="mt-1 w-4 h-4 text-purple-600 focus:ring-purple-500 rounded"
                       />
-                      <span className="ml-3 text-gray-700 dark:text-gray-300">
-                        {discipline.name}
-                      </span>
+                      <div className="ml-3 flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">
+                            {audienceLabels[plan.audience] || plan.audience}
+                          </span>
+                          <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                            {plan.price}€
+                          </span>
+                        </div>
+                        {plan.audience === 'reduced' && (
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                            (Étudiants/Forces de l'ordre/Anciens adhérents)
+                          </p>
+                        )}
+                      </div>
                     </label>
-                  ))
-                )}
+                  ))}
+                </div>
               </div>
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
+            )}
 
-        <form.Field
-          name="subscriptionPlan"
-          validators={{
-            onChange: ({ value }) => {
-              const result = formSchema.shape.subscriptionPlan.safeParse(value);
-              if (!result.success) {
-                return result.error.issues[0]?.message;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <label
-                htmlFor="subscriptionPlan"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            {/* Add Button */}
+            {builderSelectedPlans.length > 0 && (
+              <button
+                type="button"
+                onClick={handleAddSubscriptions}
+                className="w-full px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
-                Formule d'abonnement *
-                {currentTemporality && (
-                  <span className="text-gray-500 dark:text-gray-400 font-normal">
-                    {' '}
-                    ({temporalityLabels[currentTemporality]})
-                  </span>
-                )}
-                {currentDiscipline && (
-                  <span className="text-gray-500 dark:text-gray-400 font-normal">
-                    {' '}
-                    - {disciplines.find((d) => d.id === currentDiscipline)?.name}
-                  </span>
-                )}
-              </label>
-              {!currentBirthday && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                  Veuillez renseigner votre date de naissance
-                </p>
-              )}
-              {!currentTemporality && currentBirthday && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                  Veuillez sélectionner une temporalité
-                </p>
-              )}
-              {!currentDiscipline && currentTemporality && currentBirthday && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                  Veuillez sélectionner une discipline
-                </p>
-              )}
-              <select
-                id="subscriptionPlan"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={createSelectChangeHandler(field.handleChange)}
-                disabled={
-                  isLoadingPlans || !currentBirthday || !currentTemporality || !currentDiscipline
-                }
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">
-                  {isLoadingPlans
-                    ? 'Chargement...'
-                    : filteredPlans.length === 0
-                      ? 'Aucune formule disponible'
-                      : 'Sélectionner...'}
-                </option>
-                {filteredPlans.map((plan) => {
-                  const audienceLabel =
-                    plan.audience === 'reduced'
-                      ? "Tarif réduit (Étudiants/Forces de l'ordre/Anciens adhérents)"
-                      : plan.audience === 'adult'
-                        ? 'Tarif normal'
-                        : '';
-                  return (
-                    <option key={plan.id} value={plan.id}>
-                      {plan.price}€ - {audienceLabel}
-                    </option>
-                  );
-                })}
-              </select>
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
+                + Ajouter à mes abonnements ({builderSelectedPlans.length})
+              </button>
+            )}
+
+            {builderTemporality && filteredPlans.length === 0 && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Aucune formule disponible pour cette sélection
+              </p>
+            )}
+          </div>
+        )}
+
+        {!currentBirthday && (
+          <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
+            <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
+              Veuillez renseigner votre date de naissance pour ajouter des abonnements
+            </p>
+          </div>
+        )}
 
         <div className="pt-4">
+          {selectedSubscriptions.length === 0 && currentBirthday && (
+            <p className="mb-3 text-sm text-amber-600 dark:text-amber-400 text-center">
+              Veuillez ajouter au moins un abonnement pour continuer
+            </p>
+          )}
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || selectedSubscriptions.length === 0}
             className="w-full px-6 py-3 text-base font-medium text-white bg-purple-600 hover:bg-purple-700 active:translate-y-0.5 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:translate-y-0"
           >
             {isSubmitting ? 'Inscription en cours...' : "S'inscrire"}

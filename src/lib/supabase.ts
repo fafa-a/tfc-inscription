@@ -36,7 +36,7 @@ export interface MemberInsert {
   phone: string;
   emergency_phone: string;
   email: string;
-  discipline_id: string;
+  discipline_id?: string | null;
   stripe_customer_id: string;
   is_active: boolean;
   identity_photo_path?: string;
@@ -114,88 +114,109 @@ export function generateTempStripeId(): string {
 }
 
 /**
- * Inserts a new member and their subscription into the database
- * Generates a UUID for the member, uploads the photo first, then inserts with the photo path
+ * Inserts or updates a member and creates multiple subscriptions
+ * Upserts member by email, uploads photo if new member, creates one subscription per plan
  */
-export async function insertMemberWithSubscription(
-  memberData: Omit<MemberInsert, 'stripe_customer_id' | 'is_active' | 'identity_photo_path'>,
-  planId: string,
+export async function insertMemberWithSubscriptions(
+  memberData: Omit<
+    MemberInsert,
+    'stripe_customer_id' | 'is_active' | 'identity_photo_path' | 'discipline_id'
+  >,
+  planIds: string[],
   identityPhoto: File
 ) {
   try {
-    // 1. Generate UUID for the member
-    const memberId = crypto.randomUUID();
-
-    // 2. Upload identity photo first
-    const uploadResult = await uploadIdentityPhoto(identityPhoto, memberId);
-
-    if (!uploadResult.success) {
-      throw new Error(uploadResult.error || "Erreur lors de l'upload de la photo");
+    if (planIds.length === 0) {
+      throw new Error('Au moins un plan doit être sélectionné');
     }
 
-    // 3. Insert member with explicit ID and photo path
-    const { data: member, error: memberError } = await supabase
+    // 1. Check if member exists by email
+    const { data: existingMember, error: searchError } = await supabase
       .from('members')
-      .insert({
+      .select('id, identity_photo_path')
+      .eq('email', memberData.email)
+      .maybeSingle();
+
+    if (searchError) {
+      throw new Error(`Erreur lors de la recherche du membre: ${searchError.message}`);
+    }
+
+    let memberId: string;
+    let photoPath: string | undefined;
+
+    if (existingMember) {
+      // Member exists - use existing ID and photo
+      memberId = existingMember.id;
+      photoPath = existingMember.identity_photo_path || undefined;
+    } else {
+      // New member - generate ID and upload photo
+      memberId = crypto.randomUUID();
+
+      const uploadResult = await uploadIdentityPhoto(identityPhoto, memberId);
+
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error || "Erreur lors de l'upload de la photo");
+      }
+
+      photoPath = uploadResult.path;
+
+      // Insert new member
+      const { error: memberError } = await supabase.from('members').insert({
         id: memberId,
         ...memberData,
+        discipline_id: null,
         stripe_customer_id: generateTempStripeId(),
         is_active: true,
-        identity_photo_path: uploadResult.path,
-      })
-      .select()
-      .single();
+        identity_photo_path: photoPath,
+      });
 
-    if (memberError) {
-      throw new Error(`Erreur lors de l'insertion du membre: ${memberError.message}`);
+      if (memberError) {
+        throw new Error(`Erreur lors de l'insertion du membre: ${memberError.message}`);
+      }
     }
 
-    if (!member) {
-      throw new Error("Aucune donnée retournée après l'insertion du membre");
-    }
-
-    const { data: plan, error: planError } = await supabase
+    // 2. Fetch all plan details
+    const { data: plans, error: planError } = await supabase
       .from('subscription_plans')
-      .select('duration, price')
-      .eq('id', planId)
-      .single();
+      .select('id, duration, price')
+      .in('id', planIds);
 
     if (planError) {
-      throw new Error(`Erreur lors de la récupération du plan: ${planError.message}`);
+      throw new Error(`Erreur lors de la récupération des plans: ${planError.message}`);
     }
 
-    if (!plan) {
-      throw new Error("Plan d'abonnement introuvable");
+    if (!plans || plans.length === 0) {
+      throw new Error("Plans d'abonnement introuvables");
     }
 
+    // 3. Create subscriptions for each plan
     const startDate = new Date().toISOString().split('T')[0];
-    const endDate = calculateEndDate(startDate, plan.duration);
 
-    const subscriptionData: SubscriptionInsert = {
-      member_id: member.id,
-      plan_id: planId,
+    const subscriptionsToInsert: SubscriptionInsert[] = plans.map((plan) => ({
+      member_id: memberId,
+      plan_id: plan.id,
       price: plan.price,
       payment_status: 'pending',
       payment_method: 'card',
       start_date: startDate,
-      end_date: endDate,
+      end_date: calculateEndDate(startDate, plan.duration),
       notes: 'Abonnement créé depuis formulaire web',
-    };
+    }));
 
-    const { data: subscription, error: subscriptionError } = await supabase
+    const { data: subscriptions, error: subscriptionError } = await supabase
       .from('subscriptions')
-      .insert(subscriptionData)
-      .select()
-      .single();
+      .insert(subscriptionsToInsert)
+      .select();
 
     if (subscriptionError) {
-      throw new Error(`Erreur lors de l'insertion de l'abonnement: ${subscriptionError.message}`);
+      throw new Error(`Erreur lors de l'insertion des abonnements: ${subscriptionError.message}`);
     }
 
     return {
       success: true,
-      member,
-      subscription,
+      memberId,
+      subscriptions,
+      isNewMember: !existingMember,
     };
   } catch (error) {
     return {
