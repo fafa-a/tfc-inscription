@@ -32,8 +32,9 @@ const formSchema = z.object({
   firstname: z
     .string()
     .min(2, 'Le prénom doit contenir au moins 2 caractères')
-    .refine((val) => !/\d/.test(val), {}),
-  message: 'Le prénom ne doit pas contenir de chiffres',
+    .refine((val) => !/\d/.test(val), {
+      message: 'Le prénom ne doit pas contenir de chiffres',
+    }),
   lastname: z
     .string()
     .min(2, 'Le nom doit contenir au moins 2 caractères')
@@ -311,6 +312,16 @@ export default function InscriptionForm() {
     );
   }, []);
 
+  const handlePlanCheckboxChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const planId = e.currentTarget.dataset.planId;
+      if (planId) {
+        handleBuilderPlanToggle(planId);
+      }
+    },
+    [handleBuilderPlanToggle]
+  );
+
   const handleAddSubscriptions = useCallback(() => {
     if (builderSelectedPlans.length === 0) return;
 
@@ -319,7 +330,7 @@ export default function InscriptionForm() {
       const discipline = disciplines.find((d) => d.id === builderDiscipline);
 
       return {
-        planId: planId,
+        planId,
         disciplineId: builderDiscipline,
         disciplineName: discipline?.name || '',
         duration: plan?.duration || '',
@@ -339,6 +350,16 @@ export default function InscriptionForm() {
   const handleRemoveSubscription = useCallback((planId: string) => {
     setSelectedSubscriptions((prev) => prev.filter((sub) => sub.planId !== planId));
   }, []);
+
+  const handleRemoveClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      const planId = e.currentTarget.dataset.planId;
+      if (planId) {
+        handleRemoveSubscription(planId);
+      }
+    },
+    [handleRemoveSubscription]
+  );
 
   const handlePhotoChange = useCallback(
     (handleChange: (value: File | undefined) => void) =>
@@ -757,7 +778,8 @@ export default function InscriptionForm() {
                     </span>
                     <button
                       type="button"
-                      onClick={() => handleRemoveSubscription(sub.planId)}
+                      data-plan-id={sub.planId}
+                      onClick={handleRemoveClick}
                       className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium"
                     >
                       ✕
@@ -852,8 +874,9 @@ export default function InscriptionForm() {
                     >
                       <input
                         type="checkbox"
+                        data-plan-id={plan.id}
                         checked={builderSelectedPlans.includes(plan.id)}
-                        onChange={() => handleBuilderPlanToggle(plan.id)}
+                        onChange={handlePlanCheckboxChange}
                         className="mt-1 w-4 h-4 text-purple-600 focus:ring-purple-500 rounded"
                       />
                       <div className="ml-3 flex-1">
