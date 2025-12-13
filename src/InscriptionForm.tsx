@@ -142,6 +142,25 @@ const ModalContent: React.FC<ModalContentProps> = ({ onClose }) => (
   </>
 );
 
+// Underage modal component
+interface UnderageModalProps {
+  show: boolean;
+  onClose: () => void;
+}
+
+const UnderageModal: React.FC<UnderageModalProps> = ({ show, onClose }) => {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 relative flex flex-col items-center text-center gap-4">
+        <ModalCloseButton onClose={onClose} />
+        <ModalContent onClose={onClose} />
+      </div>
+    </div>
+  );
+};
+
 export default function InscriptionForm() {
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
@@ -605,24 +624,10 @@ export default function InscriptionForm() {
     form.setFieldValue('birthday', '');
   }, [form]);
 
-  // Modal for underage users - Simple version
-  const UnderageModal = () => {
-    if (!showUnderageModal) return null;
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 relative flex flex-col items-center text-center gap-4">
-          <ModalCloseButton onClose={handleCloseUnderageModal} />
-          <ModalContent onClose={handleCloseUnderageModal} />
-        </div>
-      </div>
-    );
-  };
-
   return (
     <>
       {/* Modal for underage users */}
-      <UnderageModal />
+      <UnderageModal show={showUnderageModal} onClose={handleCloseUnderageModal} />
 
       <div className="w-full max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
         <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
@@ -727,7 +732,8 @@ export default function InscriptionForm() {
                   value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={createTextChangeHandler(field.handleChange)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                  disabled={isReturningMember}
+                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${disabledFieldClass}`}
                 />
                 {field.state.meta.errors.length > 0 && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">
