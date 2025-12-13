@@ -550,6 +550,33 @@ export default function InscriptionForm() {
     form.setFieldValue('birthday', '');
   }, [form]);
 
+  // Close button component for modal
+  const ModalCloseButton = () => (
+    <button
+      type="button"
+      onClick={handleCloseUnderageModal}
+      className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+      aria-label="Fermer"
+    >
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        xmlns="http://www.w3.org/2000/svg"
+        role="img"
+      >
+        <title>Fermer</title>
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M6 18L18 6M6 6l12 12"
+        />
+      </svg>
+    </button>
+  );
+
   // Modal for underage users - Simple version
   const UnderageModal = () => {
     if (!showUnderageModal) return null;
@@ -557,47 +584,20 @@ export default function InscriptionForm() {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 relative">
-          {/* Close button (X) in top right */}
-          <button
-            type="button"
-            onClick={handleCloseUnderageModal}
-            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-            aria-label="Fermer"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-              role="img"
-            >
-              <title>Fermer</title>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+          <ModalCloseButton />
 
           <div className="flex flex-col items-center text-center gap-4">
             <span className="text-5xl">⚠️</span>
-
             <h3 className="text-xl font-bold text-orange-600 dark:text-orange-400">
               Inscription en personne requise
             </h3>
-
             <p className="text-gray-700 dark:text-gray-300">
               L'inscription en ligne est réservée aux <strong>adultes (16 ans et plus)</strong>.
             </p>
-
             <p className="text-gray-700 dark:text-gray-300">
               Pour inscrire un <strong>enfant</strong> ou un <strong>adolescent</strong>, veuillez
               vous présenter directement à <strong>l'accueil du club</strong>.
             </p>
-
             <button
               type="button"
               onClick={handleCloseUnderageModal}
