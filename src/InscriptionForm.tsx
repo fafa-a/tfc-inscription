@@ -110,6 +110,10 @@ export default function InscriptionForm() {
   } | null>(null);
   const [wasReturningMember, setWasReturningMember] = useState(false);
 
+  // Adults-only policy state
+  const [isUnderageUser, setIsUnderageUser] = useState(false);
+  const [showUnderageModal, setShowUnderageModal] = useState(false);
+
   // Selected subscriptions list (separate from form)
   const [selectedSubscriptions, setSelectedSubscriptions] = useState<SelectedSubscription[]>([]);
 
@@ -225,6 +229,8 @@ export default function InscriptionForm() {
         setPhotoPreview(null);
         setIsReturningMember(false);
         setExistingMemberData(null);
+        setIsUnderageUser(false);
+        setShowUnderageModal(false);
       } catch (error) {
         if (error instanceof z.ZodError) {
           setSubmitError('Veuillez vérifier tous les champs du formulaire');
@@ -258,11 +264,19 @@ export default function InscriptionForm() {
 
       // Match age group and member type
       let audienceMatch = false;
+
+      // NOTE: Child and teen registrations disabled (adults only policy)
+      // Uncomment below if policy changes:
+      /*
       if (ageGroup === 'enfant') {
         audienceMatch = plan.audience === 'child';
       } else if (ageGroup === 'ado') {
         audienceMatch = plan.audience === 'teen';
       } else {
+      */
+
+      // ADULTS ONLY - Active policy
+      if (ageGroup === 'adulte') {
         // Adults: show only reduced for returning members, only normal for new members
         if (isReturningMember) {
           audienceMatch = plan.audience === 'reduced';
@@ -270,6 +284,7 @@ export default function InscriptionForm() {
           audienceMatch = plan.audience === 'adult';
         }
       }
+      // } // Uncomment this if re-enabling child/teen
 
       return audienceMatch;
     });
@@ -295,11 +310,19 @@ export default function InscriptionForm() {
       if (plan.discipline_id !== builderDiscipline) return;
 
       let audienceMatch = false;
+
+      // NOTE: Child and teen registrations disabled (adults only policy)
+      // Uncomment below if policy changes:
+      /*
       if (ageGroup === 'enfant') {
         audienceMatch = plan.audience === 'child';
       } else if (ageGroup === 'ado') {
         audienceMatch = plan.audience === 'teen';
       } else {
+      */
+
+      // ADULTS ONLY - Active policy
+      if (ageGroup === 'adulte') {
         // Adults: show only reduced for returning members, only normal for new members
         if (isReturningMember) {
           audienceMatch = plan.audience === 'reduced';
@@ -307,6 +330,7 @@ export default function InscriptionForm() {
           audienceMatch = plan.audience === 'adult';
         }
       }
+      // } // Uncomment this if re-enabling child/teen
 
       if (audienceMatch) {
         temporalitySet.add(plan.type);
@@ -346,6 +370,15 @@ export default function InscriptionForm() {
       const formatted = formatDateInput(e.target.value, form.getFieldValue('birthday'));
       fieldHandleChange(formatted);
       setCurrentBirthday(formatted);
+
+      // Check if user is underage (adults only policy)
+      const detectedAgeGroup = getAgeGroupFromBirthday(formatted);
+      if (detectedAgeGroup === 'enfant' || detectedAgeGroup === 'ado') {
+        setIsUnderageUser(true);
+        setShowUnderageModal(true);
+      } else {
+        setIsUnderageUser(false);
+      }
     },
     [form]
   );
@@ -386,6 +419,15 @@ export default function InscriptionForm() {
           const formattedBirthday = `${day}/${month}/${year}`;
           form.setFieldValue('birthday', formattedBirthday);
           setCurrentBirthday(formattedBirthday);
+
+          // Check if returning member is underage (adults only policy)
+          const detectedAgeGroup = getAgeGroupFromBirthday(formattedBirthday);
+          if (detectedAgeGroup === 'enfant' || detectedAgeGroup === 'ado') {
+            setIsUnderageUser(true);
+            setShowUnderageModal(true);
+          } else {
+            setIsUnderageUser(false);
+          }
         } else {
           setIsReturningMember(false);
           setExistingMemberData(null);
@@ -500,580 +542,659 @@ export default function InscriptionForm() {
     return selectedSubscriptions.reduce((sum, sub) => sum + sub.price, 0);
   }, [selectedSubscriptions]);
 
-  return (
-    <div className="w-full max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
-      <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
-        Formulaire d'inscription
-      </h2>
+  // Handle closing underage modal and resetting birthday
+  const handleCloseUnderageModal = useCallback(() => {
+    setShowUnderageModal(false);
+    setIsUnderageUser(false);
+    setCurrentBirthday('');
+    form.setFieldValue('birthday', '');
+  }, [form]);
 
-      {!isReturningMember && !submitSuccess && (
-        <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
-          <p className="text-purple-800 dark:text-purple-200 text-sm">
-            💡 <strong>Anciens membres :</strong> Commencez par renseigner votre email pour
-            pré-remplir vos informations
-          </p>
-        </div>
-      )}
+  // Modal for underage users - Simple version
+  const UnderageModal = () => {
+    if (!showUnderageModal) return null;
 
-      {submitSuccess && (
-        <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-          <p className="text-green-800 dark:text-green-200 font-medium">
-            ✓ {wasReturningMember ? 'Réinscription' : 'Inscription'} réussie ! Votre demande a été
-            enregistrée.
-          </p>
-        </div>
-      )}
-
-      {submitError && (
-        <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-red-800 dark:text-red-200 font-medium">✗ {submitError}</p>
-        </div>
-      )}
-
-      {isReturningMember && !submitSuccess && (
-        <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-          <p className="text-blue-800 dark:text-blue-200 font-medium">
-            ℹ️ Ancien membre détecté - Veuillez vérifier vos informations et télécharger une nouvelle
-            photo d'identité pour votre réinscription
-          </p>
-        </div>
-      )}
-
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        <form.Field
-          name="firstname"
-          validators={{
-            onChange: ({ value }) => {
-              const result = formSchema.shape.firstname.safeParse(value);
-              if (!result.success) {
-                return result.error.issues[0]?.message;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <label
-                htmlFor="firstname"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Prénom *
-              </label>
-              <input
-                id="firstname"
-                type="text"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={createTextChangeHandler(field.handleChange)}
-                disabled={isReturningMember}
-                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
-                  isReturningMember
-                    ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
-                    : ''
-                }`}
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 relative">
+          {/* Close button (X) in top right */}
+          <button
+            type="button"
+            onClick={handleCloseUnderageModal}
+            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            aria-label="Fermer"
+          >
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+              role="img"
+            >
+              <title>Fermer</title>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
               />
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
+            </svg>
+          </button>
 
-        <form.Field
-          name="lastname"
-          validators={{
-            onChange: ({ value }) => {
-              const result = formSchema.shape.lastname.safeParse(value);
-              if (!result.success) {
-                return result.error.issues[0]?.message;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <label
-                htmlFor="lastname"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Nom *
-              </label>
-              <input
-                id="lastname"
-                type="text"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={createTextChangeHandler(field.handleChange)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
+          <div className="flex flex-col items-center text-center gap-4">
+            <span className="text-5xl">⚠️</span>
 
-        <form.Field
-          name="birthday"
-          validators={{
-            onChange: ({ value }) => {
-              const result = formSchema.shape.birthday.safeParse(value);
-              if (!result.success) {
-                return result.error.issues[0]?.message;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <label
-                htmlFor="birthday"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Date de naissance *
-              </label>
-              <input
-                id="birthday"
-                type="text"
-                placeholder="JJ/MM/AAAA"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={handleBirthdayChange(field.handleChange)}
-                disabled={isReturningMember}
-                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
-                  isReturningMember
-                    ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
-                    : ''
-                }`}
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
-
-        <form.Field
-          name="genre"
-          validators={{
-            onChange: ({ value }) => {
-              const result = formSchema.shape.genre.safeParse(value);
-              if (!result.success) {
-                return result.error.issues[0]?.message;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <label
-                htmlFor="genre"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Genre *
-              </label>
-              <select
-                id="genre"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={createSelectChangeHandler(field.handleChange)}
-                disabled={isReturningMember}
-                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
-                  isReturningMember
-                    ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
-                    : ''
-                }`}
-              >
-                <option value="">Sélectionner...</option>
-                <option value="homme">Homme</option>
-                <option value="femme">Femme</option>
-              </select>
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
-
-        <form.Field
-          name="phone"
-          validators={{
-            onChange: ({ value }) => {
-              const result = formSchema.shape.phone.safeParse(value);
-              if (!result.success) {
-                return result.error.issues[0]?.message;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <label
-                htmlFor="phone"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Téléphone *
-              </label>
-              <input
-                id="phone"
-                type="tel"
-                placeholder="0612345678"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={createTextChangeHandler(field.handleChange)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
-
-        <form.Field
-          name="urgencyPhone"
-          validators={{
-            onChange: ({ value }) => {
-              const result = formSchema.shape.urgencyPhone.safeParse(value);
-              if (!result.success) {
-                return result.error.issues[0]?.message;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <label
-                htmlFor="urgencyPhone"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Téléphone d'urgence *
-              </label>
-              <input
-                id="urgencyPhone"
-                type="tel"
-                placeholder="0612345678"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={createTextChangeHandler(field.handleChange)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
-
-        <form.Field
-          name="email"
-          validators={{
-            onChange: ({ value }) => {
-              const result = formSchema.shape.email.safeParse(value);
-              if (!result.success) {
-                return result.error.issues[0]?.message;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Email *
-              </label>
-              <input
-                id="email"
-                type="email"
-                placeholder="exemple@email.com"
-                value={field.state.value}
-                onBlur={handleEmailBlur(field.handleBlur)}
-                onChange={createTextChangeHandler(field.handleChange)}
-                disabled={isReturningMember}
-                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
-                  isReturningMember
-                    ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
-                    : ''
-                }`}
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
-
-        <form.Field
-          name="identityPhoto"
-          validators={{
-            onChange: ({ value }) => {
-              if (!value) {
-                return "La photo d'identité est requise";
-              }
-              const validation = validateImageFile(value);
-              if (!validation.valid) {
-                return validation.error;
-              }
-              return undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <div>
-              <label
-                htmlFor="identityPhoto"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Photo d'identité *
-              </label>
-              <input
-                id="identityPhoto"
-                type="file"
-                accept="image/jpeg,image/png"
-                required
-                onChange={handlePhotoChange(field.handleChange)}
-                onBlur={field.handleBlur}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 dark:file:bg-purple-900 dark:file:text-purple-200 ${
-                  field.state.meta.errors.length > 0
-                    ? 'border-red-500 dark:border-red-500'
-                    : 'border-gray-300 dark:border-gray-600'
-                }`}
-              />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Formats acceptés : <strong>JPEG ou PNG uniquement</strong>. Taille max : 1 Mo
-              </p>
-              {photoPreview && (
-                <div className="mt-3">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Aperçu :</p>
-                  <img
-                    src={photoPreview}
-                    alt="Aperçu de l'identité sélectionnée"
-                    className="w-32 h-32 object-cover rounded-lg border-2 border-gray-300 dark:border-gray-600"
-                  />
-                </div>
-              )}
-              {field.state.meta.errors.length > 0 && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {field.state.meta.errors.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
-        </form.Field>
-
-        {/* Selected Subscriptions Summary */}
-        {selectedSubscriptions.length > 0 && (
-          <div className="border-2 border-purple-200 dark:border-purple-800 rounded-lg p-4 bg-purple-50 dark:bg-purple-900/20">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
-              Abonnements sélectionnés ({selectedSubscriptions.length})
+            <h3 className="text-xl font-bold text-orange-600 dark:text-orange-400">
+              Inscription en personne requise
             </h3>
-            <div className="space-y-2">
-              {selectedSubscriptions.map((sub) => (
-                <div
-                  key={sub.planId}
-                  className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700"
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900 dark:text-gray-100">
-                      {sub.disciplineName} - {temporalityLabels[sub.duration] || sub.duration}
-                    </p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {audienceLabels[sub.audience] || sub.audience}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                      {sub.price}€
-                    </span>
-                    <button
-                      type="button"
-                      data-plan-id={sub.planId}
-                      onClick={handleRemoveClick}
-                      className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 pt-3 border-t border-purple-300 dark:border-purple-700">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold text-gray-800 dark:text-gray-200">Total:</span>
-                <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                  {totalPrice}€
-                </span>
-              </div>
-            </div>
+
+            <p className="text-gray-700 dark:text-gray-300">
+              L'inscription en ligne est réservée aux <strong>adultes (16 ans et plus)</strong>.
+            </p>
+
+            <p className="text-gray-700 dark:text-gray-300">
+              Pour inscrire un <strong>enfant</strong> ou un <strong>adolescent</strong>, veuillez
+              vous présenter directement à <strong>l'accueil du club</strong>.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleCloseUnderageModal}
+              className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {/* Modal for underage users */}
+      <UnderageModal />
+
+      <div className="w-full max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+        <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
+          Formulaire d'inscription
+        </h2>
+
+        {!isReturningMember && !submitSuccess && (
+          <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+            <p className="text-purple-800 dark:text-purple-200 text-sm">
+              💡 <strong>Anciens membres :</strong> Commencez par renseigner votre email pour
+              pré-remplir vos informations
+            </p>
           </div>
         )}
 
-        {/* Subscription Builder */}
-        {currentBirthday && (
-          <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
-              Ajouter un abonnement
-            </h3>
+        {submitSuccess && (
+          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+            <p className="text-green-800 dark:text-green-200 font-medium">
+              ✓ {wasReturningMember ? 'Réinscription' : 'Inscription'} réussie ! Votre demande a été
+              enregistrée.
+            </p>
+          </div>
+        )}
 
-            {/* Discipline Selection */}
-            <div className="mb-4">
-              <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Discipline *
+        {submitError && (
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <p className="text-red-800 dark:text-red-200 font-medium">✗ {submitError}</p>
+          </div>
+        )}
+
+        {isReturningMember && !submitSuccess && (
+          <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p className="text-blue-800 dark:text-blue-200 font-medium">
+              i Ancien membre détecté - Veuillez vérifier vos informations et télécharger une
+              nouvelle photo d'identité pour votre réinscription
+            </p>
+          </div>
+        )}
+
+        <form onSubmit={handleFormSubmit} className="space-y-4">
+          <form.Field
+            name="firstname"
+            validators={{
+              onChange: ({ value }) => {
+                const result = formSchema.shape.firstname.safeParse(value);
+                if (!result.success) {
+                  return result.error.issues[0]?.message;
+                }
+                return undefined;
+              },
+            }}
+          >
+            {(field) => (
+              <div>
+                <label
+                  htmlFor="firstname"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Prénom *
+                </label>
+                <input
+                  id="firstname"
+                  type="text"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={createTextChangeHandler(field.handleChange)}
+                  disabled={isReturningMember}
+                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
+                    isReturningMember
+                      ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
+                      : ''
+                  }`}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                    {field.state.meta.errors.join(', ')}
+                  </p>
+                )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {disciplines.map((discipline) => (
-                  <label
-                    key={discipline.id}
-                    className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <input
-                      type="radio"
-                      name="builderDiscipline"
-                      value={discipline.id}
-                      checked={builderDiscipline === discipline.id}
-                      onChange={handleDisciplineChange}
-                      className="w-4 h-4 text-purple-600 focus:ring-purple-500"
+            )}
+          </form.Field>
+
+          <form.Field
+            name="lastname"
+            validators={{
+              onChange: ({ value }) => {
+                const result = formSchema.shape.lastname.safeParse(value);
+                if (!result.success) {
+                  return result.error.issues[0]?.message;
+                }
+                return undefined;
+              },
+            }}
+          >
+            {(field) => (
+              <div>
+                <label
+                  htmlFor="lastname"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Nom *
+                </label>
+                <input
+                  id="lastname"
+                  type="text"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={createTextChangeHandler(field.handleChange)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                    {field.state.meta.errors.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="birthday"
+            validators={{
+              onChange: ({ value }) => {
+                const result = formSchema.shape.birthday.safeParse(value);
+                if (!result.success) {
+                  return result.error.issues[0]?.message;
+                }
+                return undefined;
+              },
+            }}
+          >
+            {(field) => (
+              <div>
+                <label
+                  htmlFor="birthday"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Date de naissance *
+                </label>
+                <input
+                  id="birthday"
+                  type="text"
+                  placeholder="JJ/MM/AAAA"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={handleBirthdayChange(field.handleChange)}
+                  disabled={isReturningMember}
+                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
+                    isReturningMember
+                      ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
+                      : ''
+                  }`}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                    {field.state.meta.errors.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="genre"
+            validators={{
+              onChange: ({ value }) => {
+                const result = formSchema.shape.genre.safeParse(value);
+                if (!result.success) {
+                  return result.error.issues[0]?.message;
+                }
+                return undefined;
+              },
+            }}
+          >
+            {(field) => (
+              <div>
+                <label
+                  htmlFor="genre"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Genre *
+                </label>
+                <select
+                  id="genre"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={createSelectChangeHandler(field.handleChange)}
+                  disabled={isReturningMember}
+                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
+                    isReturningMember
+                      ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
+                      : ''
+                  }`}
+                >
+                  <option value="">Sélectionner...</option>
+                  <option value="homme">Homme</option>
+                  <option value="femme">Femme</option>
+                </select>
+                {field.state.meta.errors.length > 0 && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                    {field.state.meta.errors.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="phone"
+            validators={{
+              onChange: ({ value }) => {
+                const result = formSchema.shape.phone.safeParse(value);
+                if (!result.success) {
+                  return result.error.issues[0]?.message;
+                }
+                return undefined;
+              },
+            }}
+          >
+            {(field) => (
+              <div>
+                <label
+                  htmlFor="phone"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Téléphone *
+                </label>
+                <input
+                  id="phone"
+                  type="tel"
+                  placeholder="0612345678"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={createTextChangeHandler(field.handleChange)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                    {field.state.meta.errors.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="urgencyPhone"
+            validators={{
+              onChange: ({ value }) => {
+                const result = formSchema.shape.urgencyPhone.safeParse(value);
+                if (!result.success) {
+                  return result.error.issues[0]?.message;
+                }
+                return undefined;
+              },
+            }}
+          >
+            {(field) => (
+              <div>
+                <label
+                  htmlFor="urgencyPhone"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Téléphone d'urgence *
+                </label>
+                <input
+                  id="urgencyPhone"
+                  type="tel"
+                  placeholder="0612345678"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={createTextChangeHandler(field.handleChange)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                    {field.state.meta.errors.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="email"
+            validators={{
+              onChange: ({ value }) => {
+                const result = formSchema.shape.email.safeParse(value);
+                if (!result.success) {
+                  return result.error.issues[0]?.message;
+                }
+                return undefined;
+              },
+            }}
+          >
+            {(field) => (
+              <div>
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Email *
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  placeholder="exemple@email.com"
+                  value={field.state.value}
+                  onBlur={handleEmailBlur(field.handleBlur)}
+                  onChange={createTextChangeHandler(field.handleChange)}
+                  disabled={isReturningMember}
+                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
+                    isReturningMember
+                      ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
+                      : ''
+                  }`}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                    {field.state.meta.errors.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="identityPhoto"
+            validators={{
+              onChange: ({ value }) => {
+                if (!value) {
+                  return "La photo d'identité est requise";
+                }
+                const validation = validateImageFile(value);
+                if (!validation.valid) {
+                  return validation.error;
+                }
+                return undefined;
+              },
+            }}
+          >
+            {(field) => (
+              <div>
+                <label
+                  htmlFor="identityPhoto"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Photo d'identité *
+                </label>
+                <input
+                  id="identityPhoto"
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  required
+                  onChange={handlePhotoChange(field.handleChange)}
+                  onBlur={field.handleBlur}
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 dark:file:bg-purple-900 dark:file:text-purple-200 ${
+                    field.state.meta.errors.length > 0
+                      ? 'border-red-500 dark:border-red-500'
+                      : 'border-gray-300 dark:border-gray-600'
+                  }`}
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Formats acceptés : <strong>JPEG ou PNG uniquement</strong>. Taille max : 1 Mo
+                </p>
+                {photoPreview && (
+                  <div className="mt-3">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Aperçu :</p>
+                    <img
+                      src={photoPreview}
+                      alt="Aperçu de l'identité sélectionnée"
+                      className="w-32 h-32 object-cover rounded-lg border-2 border-gray-300 dark:border-gray-600"
                     />
-                    <span className="ml-3 text-gray-700 dark:text-gray-300">{discipline.name}</span>
-                  </label>
+                  </div>
+                )}
+                {field.state.meta.errors.length > 0 && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                    {field.state.meta.errors.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          {/* Selected Subscriptions Summary */}
+          {selectedSubscriptions.length > 0 && (
+            <div className="border-2 border-purple-200 dark:border-purple-800 rounded-lg p-4 bg-purple-50 dark:bg-purple-900/20">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
+                Abonnements sélectionnés ({selectedSubscriptions.length})
+              </h3>
+              <div className="space-y-2">
+                {selectedSubscriptions.map((sub) => (
+                  <div
+                    key={sub.planId}
+                    className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700"
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900 dark:text-gray-100">
+                        {sub.disciplineName} - {temporalityLabels[sub.duration] || sub.duration}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {audienceLabels[sub.audience] || sub.audience}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                        {sub.price}€
+                      </span>
+                      <button
+                        type="button"
+                        data-plan-id={sub.planId}
+                        onClick={handleRemoveClick}
+                        className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
+              <div className="mt-3 pt-3 border-t border-purple-300 dark:border-purple-700">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">Total:</span>
+                  <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                    {totalPrice}€
+                  </span>
+                </div>
+              </div>
             </div>
+          )}
 
-            {/* Temporality Selection */}
-            {builderDiscipline && (
+          {/* Subscription Builder - Hidden for underage users (adults only policy) */}
+          {currentBirthday && !isUnderageUser && (
+            <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
+                Ajouter un abonnement
+              </h3>
+
+              {/* Discipline Selection */}
               <div className="mb-4">
                 <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Durée *
+                  Discipline *
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {availableTemporalities.map((type) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {disciplines.map((discipline) => (
                     <label
-                      key={type}
+                      key={discipline.id}
                       className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     >
                       <input
                         type="radio"
-                        name="builderTemporality"
-                        value={type}
-                        checked={builderTemporality === type}
-                        onChange={handleTemporalityChange}
+                        name="builderDiscipline"
+                        value={discipline.id}
+                        checked={builderDiscipline === discipline.id}
+                        onChange={handleDisciplineChange}
                         className="w-4 h-4 text-purple-600 focus:ring-purple-500"
                       />
                       <span className="ml-3 text-gray-700 dark:text-gray-300">
-                        {temporalityLabels[type] || type}
+                        {discipline.name}
                       </span>
                     </label>
                   ))}
                 </div>
               </div>
-            )}
 
-            {/* Plan Selection */}
-            {builderTemporality && filteredPlans.length > 0 && (
-              <div className="mb-4">
-                <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Formule *
+              {/* Temporality Selection */}
+              {builderDiscipline && (
+                <div className="mb-4">
+                  <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Durée *
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {availableTemporalities.map((type) => (
+                      <label
+                        key={type}
+                        className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <input
+                          type="radio"
+                          name="builderTemporality"
+                          value={type}
+                          checked={builderTemporality === type}
+                          onChange={handleTemporalityChange}
+                          className="w-4 h-4 text-purple-600 focus:ring-purple-500"
+                        />
+                        <span className="ml-3 text-gray-700 dark:text-gray-300">
+                          {temporalityLabels[type] || type}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  {filteredPlans.map((plan) => (
-                    <label
-                      key={plan.id}
-                      className="flex items-start p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        data-plan-id={plan.id}
-                        checked={builderSelectedPlans.includes(plan.id)}
-                        onChange={handlePlanCheckboxChange}
-                        className="mt-1 w-4 h-4 text-purple-600 focus:ring-purple-500 rounded"
-                      />
-                      <div className="ml-3 flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-gray-900 dark:text-gray-100">
-                            {audienceLabels[plan.audience] || plan.audience}
-                          </span>
-                          <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                            {plan.price}€
-                          </span>
+              )}
+
+              {/* Plan Selection */}
+              {builderTemporality && filteredPlans.length > 0 && (
+                <div className="mb-4">
+                  <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Formule *
+                  </div>
+                  <div className="space-y-2">
+                    {filteredPlans.map((plan) => (
+                      <label
+                        key={plan.id}
+                        className="flex items-start p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          data-plan-id={plan.id}
+                          checked={builderSelectedPlans.includes(plan.id)}
+                          onChange={handlePlanCheckboxChange}
+                          className="mt-1 w-4 h-4 text-purple-600 focus:ring-purple-500 rounded"
+                        />
+                        <div className="ml-3 flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-gray-900 dark:text-gray-100">
+                              {audienceLabels[plan.audience] || plan.audience}
+                            </span>
+                            <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                              {plan.price}€
+                            </span>
+                          </div>
+                          {plan.audience === 'reduced' && (
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                              (Étudiants/Forces de l'ordre/Anciens adhérents)
+                            </p>
+                          )}
                         </div>
-                        {plan.audience === 'reduced' && (
-                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                            (Étudiants/Forces de l'ordre/Anciens adhérents)
-                          </p>
-                        )}
-                      </div>
-                    </label>
-                  ))}
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Add Button */}
-            {builderSelectedPlans.length > 0 && (
-              <button
-                type="button"
-                onClick={handleAddSubscriptions}
-                className="w-full px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                + Ajouter à mes abonnements ({builderSelectedPlans.length})
-              </button>
-            )}
+              {/* Add Button */}
+              {builderSelectedPlans.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleAddSubscriptions}
+                  className="w-full px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  + Ajouter à mes abonnements ({builderSelectedPlans.length})
+                </button>
+              )}
 
-            {builderTemporality && filteredPlans.length === 0 && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Aucune formule disponible pour cette sélection
+              {builderTemporality && filteredPlans.length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Aucune formule disponible pour cette sélection
+                </p>
+              )}
+            </div>
+          )}
+
+          {!currentBirthday && (
+            <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
+              <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
+                Veuillez renseigner votre date de naissance pour ajouter des abonnements
+              </p>
+            </div>
+          )}
+
+          <div className="pt-4">
+            {selectedSubscriptions.length === 0 && currentBirthday && !isUnderageUser && (
+              <p className="mb-3 text-sm text-amber-600 dark:text-amber-400 text-center">
+                Veuillez ajouter au moins un abonnement pour continuer
               </p>
             )}
+            {/* Hide submit button for underage users (adults only policy) */}
+            {!isUnderageUser && (
+              <button
+                type="submit"
+                disabled={isSubmitting || selectedSubscriptions.length === 0}
+                className="w-full px-6 py-3 text-base font-medium text-white bg-purple-600 hover:bg-purple-700 active:translate-y-0.5 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:translate-y-0"
+              >
+                {isSubmitting ? 'Inscription en cours...' : "S'inscrire"}
+              </button>
+            )}
           </div>
-        )}
-
-        {!currentBirthday && (
-          <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
-              Veuillez renseigner votre date de naissance pour ajouter des abonnements
-            </p>
-          </div>
-        )}
-
-        <div className="pt-4">
-          {selectedSubscriptions.length === 0 && currentBirthday && (
-            <p className="mb-3 text-sm text-amber-600 dark:text-amber-400 text-center">
-              Veuillez ajouter au moins un abonnement pour continuer
-            </p>
-          )}
-          <button
-            type="submit"
-            disabled={isSubmitting || selectedSubscriptions.length === 0}
-            className="w-full px-6 py-3 text-base font-medium text-white bg-purple-600 hover:bg-purple-700 active:translate-y-0.5 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:translate-y-0"
-          >
-            {isSubmitting ? 'Inscription en cours...' : "S'inscrire"}
-          </button>
-        </div>
-      </form>
-    </div>
+        </form>
+      </div>
+    </>
   );
 }
