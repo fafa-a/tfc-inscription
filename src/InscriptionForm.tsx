@@ -238,30 +238,19 @@ export default function InscriptionForm() {
     fetchData();
   }, []);
 
-  const form = useForm({
-    defaultValues: {
-      firstname: '',
-      lastname: '',
-      birthday: '',
-      genre: '' as FormData['genre'] | '',
-      phone: '',
-      urgencyPhone: '',
-      email: '',
-      identityPhoto: undefined as File | undefined,
-    },
-    onSubmit: async ({ value }) => {
+  // Extract submit handler to reduce complexity
+  const handleFormSubmission = useCallback(
+    async (value: unknown) => {
       setIsSubmitting(true);
       setSubmitError(null);
       setSubmitSuccess(false);
 
       try {
-        // Validate subscriptions are selected
         if (selectedSubscriptions.length === 0) {
           throw new Error("Veuillez ajouter au moins une formule d'abonnement");
         }
 
         const validated = formSchema.parse(value);
-
         const birthDateISO = convertToISODate(validated.birthday);
 
         const genderMap: Record<'homme' | 'femme', 'male' | 'female'> = {
@@ -281,31 +270,24 @@ export default function InscriptionForm() {
         };
 
         const planIds = selectedSubscriptions.map((sub) => sub.planId);
-
-        // Upload photo first (frontend)
         const memberId = existingMemberData?.id || crypto.randomUUID();
 
         const photoUploadResult = await uploadIdentityPhoto(validated.identityPhoto, memberId);
-
         if (!photoUploadResult.success) {
           throw new Error(photoUploadResult.error || "Erreur lors de l'upload de la photo");
         }
 
-        // Submit form with photo path
         const result = await insertMemberWithSubscriptions(
           memberData,
           planIds,
           photoUploadResult.path || ''
         );
-
         if (!result.success) {
           throw new Error(result.error || "Erreur lors de l'inscription");
         }
 
         setSubmitSuccess(true);
         setWasReturningMember(isReturningMember);
-
-        form.reset();
         setCurrentBirthday('');
         setSelectedSubscriptions([]);
         resetBuilder();
@@ -314,16 +296,34 @@ export default function InscriptionForm() {
         setExistingMemberData(null);
         closeModal();
       } catch (error) {
-        if (error instanceof z.ZodError) {
-          setSubmitError('Veuillez vérifier tous les champs du formulaire');
-        } else if (error instanceof Error) {
-          setSubmitError(error.message);
-        } else {
-          setSubmitError("Une erreur est survenue lors de l'inscription");
-        }
+        const errorMessage =
+          error instanceof z.ZodError
+            ? 'Veuillez vérifier tous les champs du formulaire'
+            : error instanceof Error
+              ? error.message
+              : "Une erreur est survenue lors de l'inscription";
+        setSubmitError(errorMessage);
       } finally {
         setIsSubmitting(false);
       }
+    },
+    [selectedSubscriptions, existingMemberData, isReturningMember, resetBuilder, closeModal]
+  );
+
+  const form = useForm({
+    defaultValues: {
+      firstname: '',
+      lastname: '',
+      birthday: '',
+      genre: '' as FormData['genre'] | '',
+      phone: '',
+      urgencyPhone: '',
+      email: '',
+      identityPhoto: undefined as File | undefined,
+    },
+    onSubmit: async ({ value }) => {
+      await handleFormSubmission(value);
+      form.reset();
     },
   });
 
