@@ -1,8 +1,9 @@
 import { useForm } from '@tanstack/react-form';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
+import { useSubscriptionBuilder } from './hooks/useSubscriptionBuilder';
+import { useUnderagePolicy } from './hooks/useUnderagePolicy';
 import {
-  type AgeGroup,
   type Discipline,
   type SubscriptionPlan,
   checkMemberByEmail,
@@ -10,7 +11,6 @@ import {
   insertMemberWithSubscriptions,
   supabase,
 } from './lib/supabase';
-import { getAgeGroupFromBirthday } from './utils/ageUtils';
 import { uploadIdentityPhoto, validateImageFile } from './utils/uploadPhoto';
 
 const formatDateInput = (value: string, previousValue: string): string => {
@@ -184,17 +184,28 @@ export default function InscriptionForm() {
   } | null>(null);
   const [wasReturningMember, setWasReturningMember] = useState(false);
 
-  // Adults-only policy state
-  const [isUnderageUser, setIsUnderageUser] = useState(false);
-  const [showUnderageModal, setShowUnderageModal] = useState(false);
+  // Adults-only policy state (using hook)
+  const { isUnderageUser, showUnderageModal, checkAge, closeModal } = useUnderagePolicy();
 
   // Selected subscriptions list (separate from form)
   const [selectedSubscriptions, setSelectedSubscriptions] = useState<SelectedSubscription[]>([]);
 
-  // Subscription builder state
-  const [builderDiscipline, setBuilderDiscipline] = useState('');
-  const [builderTemporality, setBuilderTemporality] = useState('');
-  const [builderSelectedPlans, setBuilderSelectedPlans] = useState<string[]>([]);
+  // Subscription builder state (using hook)
+  const {
+    builderDiscipline,
+    builderTemporality,
+    builderSelectedPlans,
+    availableTemporalities,
+    filteredPlans,
+    setBuilderDiscipline,
+    setBuilderTemporality,
+    togglePlan,
+    resetBuilder,
+  } = useSubscriptionBuilder({
+    currentBirthday,
+    isReturningMember,
+    subscriptionPlans,
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -297,14 +308,11 @@ export default function InscriptionForm() {
         form.reset();
         setCurrentBirthday('');
         setSelectedSubscriptions([]);
-        setBuilderDiscipline('');
-        setBuilderTemporality('');
-        setBuilderSelectedPlans([]);
+        resetBuilder();
         setPhotoPreview(null);
         setIsReturningMember(false);
         setExistingMemberData(null);
-        setIsUnderageUser(false);
-        setShowUnderageModal(false);
+        closeModal();
       } catch (error) {
         if (error instanceof z.ZodError) {
           setSubmitError('Veuillez vérifier tous les champs du formulaire');
@@ -318,77 +326,6 @@ export default function InscriptionForm() {
       }
     },
   });
-
-  const ageGroup: AgeGroup | null = useMemo(() => {
-    if (!currentBirthday) return null;
-    return getAgeGroupFromBirthday(currentBirthday);
-  }, [currentBirthday]);
-
-  const filteredPlans = useMemo(() => {
-    if (!currentBirthday || !ageGroup || !builderDiscipline || !builderTemporality) {
-      return [];
-    }
-
-    const filtered = subscriptionPlans.filter((plan) => {
-      // Match discipline
-      if (plan.discipline_id !== builderDiscipline) return false;
-
-      // Match temporality
-      if (plan.type !== builderTemporality) return false;
-
-      // Match age group and member type
-      // ADULTS ONLY - Active policy
-      let audienceMatch = false;
-      if (ageGroup === 'adulte') {
-        // Adults: show only reduced for returning members, only normal for new members
-        if (isReturningMember) {
-          audienceMatch = plan.audience === 'reduced';
-        } else {
-          audienceMatch = plan.audience === 'adult';
-        }
-      }
-
-      return audienceMatch;
-    });
-
-    return filtered;
-  }, [
-    currentBirthday,
-    ageGroup,
-    builderDiscipline,
-    builderTemporality,
-    subscriptionPlans,
-    isReturningMember,
-  ]);
-
-  const availableTemporalities = useMemo(() => {
-    if (!currentBirthday || !ageGroup || !builderDiscipline) {
-      return [];
-    }
-
-    const temporalitySet = new Set<string>();
-
-    subscriptionPlans.forEach((plan) => {
-      if (plan.discipline_id !== builderDiscipline) return;
-
-      // ADULTS ONLY - Active policy
-      let audienceMatch = false;
-      if (ageGroup === 'adulte') {
-        // Adults: show only reduced for returning members, only normal for new members
-        if (isReturningMember) {
-          audienceMatch = plan.audience === 'reduced';
-        } else {
-          audienceMatch = plan.audience === 'adult';
-        }
-      }
-
-      if (audienceMatch) {
-        temporalitySet.add(plan.type);
-      }
-    });
-
-    return Array.from(temporalitySet);
-  }, [currentBirthday, ageGroup, builderDiscipline, subscriptionPlans, isReturningMember]);
 
   const handleFormSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -422,15 +359,9 @@ export default function InscriptionForm() {
       setCurrentBirthday(formatted);
 
       // Check if user is underage (adults only policy)
-      const detectedAgeGroup = getAgeGroupFromBirthday(formatted);
-      if (detectedAgeGroup === 'enfant' || detectedAgeGroup === 'ado') {
-        setIsUnderageUser(true);
-        setShowUnderageModal(true);
-      } else {
-        setIsUnderageUser(false);
-      }
+      checkAge(formatted);
     },
-    [form]
+    [form, checkAge]
   );
 
   const handleEmailBlur = useCallback(
@@ -471,13 +402,7 @@ export default function InscriptionForm() {
           setCurrentBirthday(formattedBirthday);
 
           // Check if returning member is underage (adults only policy)
-          const detectedAgeGroup = getAgeGroupFromBirthday(formattedBirthday);
-          if (detectedAgeGroup === 'enfant' || detectedAgeGroup === 'ado') {
-            setIsUnderageUser(true);
-            setShowUnderageModal(true);
-          } else {
-            setIsUnderageUser(false);
-          }
+          checkAge(formattedBirthday);
         } else {
           setIsReturningMember(false);
           setExistingMemberData(null);
@@ -488,14 +413,15 @@ export default function InscriptionForm() {
         setExistingMemberData(null);
       }
     },
-    [form]
+    [form, checkAge]
   );
 
-  const handleBuilderPlanToggle = useCallback((planId: string) => {
-    setBuilderSelectedPlans((prev) =>
-      prev.includes(planId) ? prev.filter((id) => id !== planId) : [...prev, planId]
-    );
-  }, []);
+  const handleBuilderPlanToggle = useCallback(
+    (planId: string) => {
+      togglePlan(planId);
+    },
+    [togglePlan]
+  );
 
   const handlePlanCheckboxChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -527,10 +453,8 @@ export default function InscriptionForm() {
     setSelectedSubscriptions((prev) => [...prev, ...newSubscriptions]);
 
     // Reset builder
-    setBuilderDiscipline('');
-    setBuilderTemporality('');
-    setBuilderSelectedPlans([]);
-  }, [builderSelectedPlans, builderDiscipline, subscriptionPlans, disciplines]);
+    resetBuilder();
+  }, [builderSelectedPlans, builderDiscipline, subscriptionPlans, disciplines, resetBuilder]);
 
   const handleRemoveSubscription = useCallback((planId: string) => {
     setSelectedSubscriptions((prev) => prev.filter((sub) => sub.planId !== planId));
@@ -581,16 +505,19 @@ export default function InscriptionForm() {
     []
   );
 
-  const handleDisciplineChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setBuilderDiscipline(e.target.value);
-    setBuilderTemporality('');
-    setBuilderSelectedPlans([]);
-  }, []);
+  const handleDisciplineChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setBuilderDiscipline(e.target.value);
+    },
+    [setBuilderDiscipline]
+  );
 
-  const handleTemporalityChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setBuilderTemporality(e.target.value);
-    setBuilderSelectedPlans([]);
-  }, []);
+  const handleTemporalityChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setBuilderTemporality(e.target.value);
+    },
+    [setBuilderTemporality]
+  );
 
   const temporalityLabels: Record<string, string> = {
     season: 'Saison',
@@ -618,11 +545,10 @@ export default function InscriptionForm() {
 
   // Handle closing underage modal and resetting birthday
   const handleCloseUnderageModal = useCallback(() => {
-    setShowUnderageModal(false);
-    setIsUnderageUser(false);
+    closeModal();
     setCurrentBirthday('');
     form.setFieldValue('birthday', '');
-  }, [form]);
+  }, [form, closeModal]);
 
   return (
     <>
