@@ -1,6 +1,7 @@
 import { useForm } from '@tanstack/react-form';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
+import { SubscriptionBuilderSection } from './components/SubscriptionBuilderSection';
 import { useSubscriptionBuilder } from './hooks/useSubscriptionBuilder';
 import { useUnderagePolicy } from './hooks/useUnderagePolicy';
 import {
@@ -559,10 +560,10 @@ export default function InscriptionForm() {
   const isSubmitDisabled = isSubmitting || selectedSubscriptions.length === 0;
   const showReturningMemberBanner = isReturningMember && !submitSuccess;
   const showNewMemberInfo = !isReturningMember && !submitSuccess;
-  const showTemporalitySelector = builderDiscipline;
-  const showPlanSelector = builderTemporality && filteredPlans.length > 0;
+  const showTemporalitySelector = !!builderDiscipline;
+  const showPlanSelector = !!(builderTemporality && filteredPlans.length > 0);
   const showAddButton = builderSelectedPlans.length > 0;
-  const showNoPlansMessage = builderTemporality && filteredPlans.length === 0;
+  const showNoPlansMessage = !!(builderTemporality && filteredPlans.length === 0);
 
   return (
     <>
@@ -986,124 +987,22 @@ export default function InscriptionForm() {
 
           {/* Subscription Builder - Hidden for underage users (adults only policy) */}
           {canShowBuilder && (
-            <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
-                Ajouter un abonnement
-              </h3>
-
-              {/* Discipline Selection */}
-              <div className="mb-4">
-                <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Discipline *
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {disciplines.map((discipline) => (
-                    <label
-                      key={discipline.id}
-                      className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <input
-                        type="radio"
-                        name="builderDiscipline"
-                        value={discipline.id}
-                        checked={builderDiscipline === discipline.id}
-                        onChange={handleDisciplineChange}
-                        className="w-4 h-4 text-purple-600 focus:ring-purple-500"
-                      />
-                      <span className="ml-3 text-gray-700 dark:text-gray-300">
-                        {discipline.name}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Temporality Selection */}
-              {showTemporalitySelector && (
-                <div className="mb-4">
-                  <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Durée *
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {availableTemporalities.map((type) => (
-                      <label
-                        key={type}
-                        className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        <input
-                          type="radio"
-                          name="builderTemporality"
-                          value={type}
-                          checked={builderTemporality === type}
-                          onChange={handleTemporalityChange}
-                          className="w-4 h-4 text-purple-600 focus:ring-purple-500"
-                        />
-                        <span className="ml-3 text-gray-700 dark:text-gray-300">
-                          {temporalityLabels[type] || type}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Plan Selection */}
-              {showPlanSelector && (
-                <div className="mb-4">
-                  <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Formule *
-                  </div>
-                  <div className="space-y-2">
-                    {filteredPlans.map((plan) => (
-                      <label
-                        key={plan.id}
-                        className="flex items-start p-3 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        <input
-                          type="checkbox"
-                          data-plan-id={plan.id}
-                          checked={builderSelectedPlans.includes(plan.id)}
-                          onChange={handlePlanCheckboxChange}
-                          className="mt-1 w-4 h-4 text-purple-600 focus:ring-purple-500 rounded"
-                        />
-                        <div className="ml-3 flex-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-gray-900 dark:text-gray-100">
-                              {audienceLabels[plan.audience] || plan.audience}
-                            </span>
-                            <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                              {plan.price}€
-                            </span>
-                          </div>
-                          {plan.audience === 'reduced' && (
-                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                              (Étudiants/Forces de l'ordre/Anciens adhérents)
-                            </p>
-                          )}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Add Button */}
-              {showAddButton && (
-                <button
-                  type="button"
-                  onClick={handleAddSubscriptions}
-                  className="w-full px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  + Ajouter à mes abonnements ({builderSelectedPlans.length})
-                </button>
-              )}
-
-              {showNoPlansMessage && (
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Aucune formule disponible pour cette sélection
-                </p>
-              )}
-            </div>
+            <SubscriptionBuilderSection
+              disciplines={disciplines}
+              builderDiscipline={builderDiscipline}
+              builderTemporality={builderTemporality}
+              builderSelectedPlans={builderSelectedPlans}
+              availableTemporalities={availableTemporalities}
+              filteredPlans={filteredPlans}
+              showTemporalitySelector={showTemporalitySelector}
+              showPlanSelector={showPlanSelector}
+              showAddButton={showAddButton}
+              showNoPlansMessage={showNoPlansMessage}
+              handleDisciplineChange={handleDisciplineChange}
+              handleTemporalityChange={handleTemporalityChange}
+              handlePlanCheckboxChange={handlePlanCheckboxChange}
+              handleAddSubscriptions={handleAddSubscriptions}
+            />
           )}
 
           {canShowNoBirthdayMessage && (
