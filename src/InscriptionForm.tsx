@@ -577,35 +577,39 @@ export default function InscriptionForm() {
     </button>
   );
 
+  // Modal content component
+  const ModalContent = () => (
+    <>
+      <span className="text-5xl">⚠️</span>
+      <h3 className="text-xl font-bold text-orange-600 dark:text-orange-400">
+        Inscription en personne requise
+      </h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        L'inscription en ligne est réservée aux adultes (16 ans et plus).
+      </p>
+      <p className="text-gray-700 dark:text-gray-300">
+        Pour inscrire un enfant ou un adolescent, veuillez vous présenter directement à l'accueil du
+        club.
+      </p>
+      <button
+        type="button"
+        onClick={handleCloseUnderageModal}
+        className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
+      >
+        Fermer
+      </button>
+    </>
+  );
+
   // Modal for underage users - Simple version
   const UnderageModal = () => {
     if (!showUnderageModal) return null;
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 relative">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 relative flex flex-col items-center text-center gap-4">
           <ModalCloseButton />
-
-          <div className="flex flex-col items-center text-center gap-4">
-            <span className="text-5xl">⚠️</span>
-            <h3 className="text-xl font-bold text-orange-600 dark:text-orange-400">
-              Inscription en personne requise
-            </h3>
-            <p className="text-gray-700 dark:text-gray-300">
-              L'inscription en ligne est réservée aux <strong>adultes (16 ans et plus)</strong>.
-            </p>
-            <p className="text-gray-700 dark:text-gray-300">
-              Pour inscrire un <strong>enfant</strong> ou un <strong>adolescent</strong>, veuillez
-              vous présenter directement à <strong>l'accueil du club</strong>.
-            </p>
-            <button
-              type="button"
-              onClick={handleCloseUnderageModal}
-              className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
-            >
-              Fermer
-            </button>
-          </div>
+          <ModalContent />
         </div>
       </div>
     );
