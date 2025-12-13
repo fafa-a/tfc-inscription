@@ -1,3 +1,4 @@
+import { AUDIENCE_LABELS, TEMPORALITY_LABELS } from '../constants/labels';
 import type { Discipline, SubscriptionPlan } from '../lib/supabase';
 
 interface SubscriptionBuilderSectionProps {
@@ -16,21 +17,6 @@ interface SubscriptionBuilderSectionProps {
   handlePlanCheckboxChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleAddSubscriptions: () => void;
 }
-
-const temporalityLabels: Record<string, string> = {
-  season: 'Saison',
-  yearly: 'Année',
-  semester1: 'Semestre',
-  quarter: 'Trimestre',
-  month: 'Mois',
-};
-
-const audienceLabels: Record<string, string> = {
-  adult: 'Adulte',
-  reduced: 'Tarif réduit',
-  teen: 'Ado',
-  child: 'Enfant',
-};
 
 export function SubscriptionBuilderSection({
   disciplines,
@@ -100,7 +86,7 @@ export function SubscriptionBuilderSection({
                   className="w-4 h-4 text-purple-600 focus:ring-purple-500"
                 />
                 <span className="ml-3 text-gray-700 dark:text-gray-300">
-                  {temporalityLabels[type] || type}
+                  {TEMPORALITY_LABELS[type] || type}
                 </span>
               </label>
             ))}
@@ -130,7 +116,7 @@ export function SubscriptionBuilderSection({
                 <div className="ml-3 flex-1">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-gray-900 dark:text-gray-100">
-                      {audienceLabels[plan.audience] || plan.audience}
+                      {AUDIENCE_LABELS[plan.audience] || plan.audience}
                     </span>
                     <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
                       {plan.price}€

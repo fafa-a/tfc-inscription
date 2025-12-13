@@ -2,6 +2,7 @@ import { useForm } from '@tanstack/react-form';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import { SubscriptionBuilderSection } from './components/SubscriptionBuilderSection';
+import { AUDIENCE_LABELS, TEMPORALITY_LABELS } from './constants/labels';
 import { useSubscriptionBuilder } from './hooks/useSubscriptionBuilder';
 import { useUnderagePolicy } from './hooks/useUnderagePolicy';
 import {
@@ -337,15 +338,16 @@ export default function InscriptionForm() {
     [form]
   );
 
-  const createTextChangeHandler = useCallback(
-    <T,>(handleChange: (value: T) => void) =>
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        handleChange(e.target.value as T);
-      },
+  // Generic text field change handler
+  const handleTextFieldChange = useCallback(
+    (handleChange: (value: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      handleChange(e.target.value);
+    },
     []
   );
 
-  const createSelectChangeHandler = useCallback(
+  // Generic select field change handler
+  const handleSelectFieldChange = useCallback(
     <T,>(handleChange: (value: T) => void) =>
       (e: React.ChangeEvent<HTMLSelectElement>) => {
         handleChange(e.target.value as T);
@@ -520,21 +522,6 @@ export default function InscriptionForm() {
     [setBuilderTemporality]
   );
 
-  const temporalityLabels: Record<string, string> = {
-    season: 'Saison',
-    yearly: 'Année',
-    semester1: 'Semestre',
-    quarter: 'Trimestre',
-    month: 'Mois',
-  };
-
-  const audienceLabels: Record<string, string> = {
-    adult: 'Adulte',
-    reduced: 'Tarif réduit',
-    teen: 'Ado',
-    child: 'Enfant',
-  };
-
   // Disabled field styling for returning members
   const disabledFieldClass = isReturningMember
     ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
@@ -612,7 +599,7 @@ export default function InscriptionForm() {
           <form.Field
             name="firstname"
             validators={{
-              onChange: ({ value }) => {
+              onBlur: ({ value }) => {
                 const result = formSchema.shape.firstname.safeParse(value);
                 if (!result.success) {
                   return result.error.issues[0]?.message;
@@ -634,7 +621,7 @@ export default function InscriptionForm() {
                   type="text"
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={createTextChangeHandler(field.handleChange)}
+                  onChange={handleTextFieldChange(field.handleChange)}
                   disabled={isReturningMember}
                   className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${disabledFieldClass}`}
                 />
@@ -650,7 +637,7 @@ export default function InscriptionForm() {
           <form.Field
             name="lastname"
             validators={{
-              onChange: ({ value }) => {
+              onBlur: ({ value }) => {
                 const result = formSchema.shape.lastname.safeParse(value);
                 if (!result.success) {
                   return result.error.issues[0]?.message;
@@ -672,7 +659,7 @@ export default function InscriptionForm() {
                   type="text"
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={createTextChangeHandler(field.handleChange)}
+                  onChange={handleTextFieldChange(field.handleChange)}
                   disabled={isReturningMember}
                   className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${disabledFieldClass}`}
                 />
@@ -727,7 +714,7 @@ export default function InscriptionForm() {
           <form.Field
             name="genre"
             validators={{
-              onChange: ({ value }) => {
+              onBlur: ({ value }) => {
                 const result = formSchema.shape.genre.safeParse(value);
                 if (!result.success) {
                   return result.error.issues[0]?.message;
@@ -748,7 +735,7 @@ export default function InscriptionForm() {
                   id="genre"
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={createSelectChangeHandler(field.handleChange)}
+                  onChange={handleSelectFieldChange(field.handleChange)}
                   disabled={isReturningMember}
                   className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${disabledFieldClass}`}
                 >
@@ -768,7 +755,7 @@ export default function InscriptionForm() {
           <form.Field
             name="phone"
             validators={{
-              onChange: ({ value }) => {
+              onBlur: ({ value }) => {
                 const result = formSchema.shape.phone.safeParse(value);
                 if (!result.success) {
                   return result.error.issues[0]?.message;
@@ -791,7 +778,7 @@ export default function InscriptionForm() {
                   placeholder="0612345678"
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={createTextChangeHandler(field.handleChange)}
+                  onChange={handleTextFieldChange(field.handleChange)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
                 />
                 {field.state.meta.errors.length > 0 && (
@@ -806,7 +793,7 @@ export default function InscriptionForm() {
           <form.Field
             name="urgencyPhone"
             validators={{
-              onChange: ({ value }) => {
+              onBlur: ({ value }) => {
                 const result = formSchema.shape.urgencyPhone.safeParse(value);
                 if (!result.success) {
                   return result.error.issues[0]?.message;
@@ -829,7 +816,7 @@ export default function InscriptionForm() {
                   placeholder="0612345678"
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={createTextChangeHandler(field.handleChange)}
+                  onChange={handleTextFieldChange(field.handleChange)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
                 />
                 {field.state.meta.errors.length > 0 && (
@@ -844,7 +831,7 @@ export default function InscriptionForm() {
           <form.Field
             name="email"
             validators={{
-              onChange: ({ value }) => {
+              onBlur: ({ value }) => {
                 const result = formSchema.shape.email.safeParse(value);
                 if (!result.success) {
                   return result.error.issues[0]?.message;
@@ -867,7 +854,7 @@ export default function InscriptionForm() {
                   placeholder="exemple@email.com"
                   value={field.state.value}
                   onBlur={handleEmailBlur(field.handleBlur)}
-                  onChange={createTextChangeHandler(field.handleChange)}
+                  onChange={handleTextFieldChange(field.handleChange)}
                   disabled={isReturningMember}
                   className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${disabledFieldClass}`}
                 />
@@ -883,7 +870,7 @@ export default function InscriptionForm() {
           <form.Field
             name="identityPhoto"
             validators={{
-              onChange: ({ value }) => {
+              onBlur: ({ value }) => {
                 if (!value) {
                   return "La photo d'identité est requise";
                 }
@@ -952,10 +939,10 @@ export default function InscriptionForm() {
                   >
                     <div className="flex-1">
                       <p className="font-medium text-gray-900 dark:text-gray-100">
-                        {sub.disciplineName} - {temporalityLabels[sub.duration] || sub.duration}
+                        {sub.disciplineName} - {TEMPORALITY_LABELS[sub.duration] || sub.duration}
                       </p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {audienceLabels[sub.audience] || sub.audience}
+                        {AUDIENCE_LABELS[sub.audience] || sub.audience}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
