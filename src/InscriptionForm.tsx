@@ -550,6 +550,20 @@ export default function InscriptionForm() {
     form.setFieldValue('birthday', '');
   }, [form, closeModal]);
 
+  // Computed display conditions (reduces cyclomatic complexity in JSX)
+  const canShowBuilder = currentBirthday && !isUnderageUser;
+  const canShowNoBirthdayMessage = !currentBirthday;
+  const showSubmitWarning =
+    selectedSubscriptions.length === 0 && currentBirthday && !isUnderageUser;
+  const canSubmit = !isUnderageUser;
+  const isSubmitDisabled = isSubmitting || selectedSubscriptions.length === 0;
+  const showReturningMemberBanner = isReturningMember && !submitSuccess;
+  const showNewMemberInfo = !isReturningMember && !submitSuccess;
+  const showTemporalitySelector = builderDiscipline;
+  const showPlanSelector = builderTemporality && filteredPlans.length > 0;
+  const showAddButton = builderSelectedPlans.length > 0;
+  const showNoPlansMessage = builderTemporality && filteredPlans.length === 0;
+
   return (
     <>
       {/* Modal for underage users */}
@@ -560,7 +574,7 @@ export default function InscriptionForm() {
           Formulaire d'inscription
         </h2>
 
-        {!isReturningMember && !submitSuccess && (
+        {showNewMemberInfo && (
           <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
             <p className="text-purple-800 dark:text-purple-200 text-sm">
               💡 <strong>Anciens membres :</strong> Commencez par renseigner votre email pour
@@ -584,7 +598,7 @@ export default function InscriptionForm() {
           </div>
         )}
 
-        {isReturningMember && !submitSuccess && (
+        {showReturningMemberBanner && (
           <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
             <p className="text-blue-800 dark:text-blue-200 font-medium">
               i Ancien membre détecté - Veuillez vérifier vos informations et télécharger une
@@ -971,7 +985,7 @@ export default function InscriptionForm() {
           )}
 
           {/* Subscription Builder - Hidden for underage users (adults only policy) */}
-          {currentBirthday && !isUnderageUser && (
+          {canShowBuilder && (
             <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
                 Ajouter un abonnement
@@ -1005,7 +1019,7 @@ export default function InscriptionForm() {
               </div>
 
               {/* Temporality Selection */}
-              {builderDiscipline && (
+              {showTemporalitySelector && (
                 <div className="mb-4">
                   <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Durée *
@@ -1034,7 +1048,7 @@ export default function InscriptionForm() {
               )}
 
               {/* Plan Selection */}
-              {builderTemporality && filteredPlans.length > 0 && (
+              {showPlanSelector && (
                 <div className="mb-4">
                   <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Formule *
@@ -1074,7 +1088,7 @@ export default function InscriptionForm() {
               )}
 
               {/* Add Button */}
-              {builderSelectedPlans.length > 0 && (
+              {showAddButton && (
                 <button
                   type="button"
                   onClick={handleAddSubscriptions}
@@ -1084,7 +1098,7 @@ export default function InscriptionForm() {
                 </button>
               )}
 
-              {builderTemporality && filteredPlans.length === 0 && (
+              {showNoPlansMessage && (
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Aucune formule disponible pour cette sélection
                 </p>
@@ -1092,7 +1106,7 @@ export default function InscriptionForm() {
             </div>
           )}
 
-          {!currentBirthday && (
+          {canShowNoBirthdayMessage && (
             <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
               <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
                 Veuillez renseigner votre date de naissance pour ajouter des abonnements
@@ -1101,7 +1115,7 @@ export default function InscriptionForm() {
           )}
 
           <div className="pt-4">
-            {selectedSubscriptions.length === 0 && currentBirthday && !isUnderageUser && (
+            {showSubmitWarning && (
               <p
                 id="subscription-warning"
                 className="mb-3 text-sm text-amber-600 dark:text-amber-400 text-center"
@@ -1110,11 +1124,11 @@ export default function InscriptionForm() {
               </p>
             )}
             {/* Hide submit button for underage users (adults only policy) */}
-            {!isUnderageUser && (
+            {canSubmit && (
               <button
                 type="submit"
-                disabled={isSubmitting || selectedSubscriptions.length === 0}
-                aria-disabled={isSubmitting || selectedSubscriptions.length === 0}
+                disabled={isSubmitDisabled}
+                aria-disabled={isSubmitDisabled}
                 aria-busy={isSubmitting}
                 aria-describedby={
                   selectedSubscriptions.length === 0 ? 'subscription-warning' : undefined
