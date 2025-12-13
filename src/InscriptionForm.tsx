@@ -1,5 +1,5 @@
 import { useForm } from '@tanstack/react-form';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import {
   type AgeGroup,
@@ -88,6 +88,60 @@ interface SelectedSubscription {
 
 type FormData = z.infer<typeof formSchema>;
 
+// Modal close button component
+interface ModalCloseButtonProps {
+  onClose: () => void;
+}
+
+const ModalCloseButton: React.FC<ModalCloseButtonProps> = ({ onClose }) => (
+  <button
+    type="button"
+    onClick={onClose}
+    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+    aria-label="Fermer"
+  >
+    <svg
+      className="w-6 h-6"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+    >
+      <title>Fermer</title>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  </button>
+);
+
+// Modal content component
+interface ModalContentProps {
+  onClose: () => void;
+}
+
+const ModalContent: React.FC<ModalContentProps> = ({ onClose }) => (
+  <>
+    <span className="text-5xl">⚠️</span>
+    <h3 className="text-xl font-bold text-orange-600 dark:text-orange-400">
+      Inscription en personne requise
+    </h3>
+    <p className="text-gray-700 dark:text-gray-300">
+      L'inscription en ligne est réservée aux adultes (16 ans et plus).
+    </p>
+    <p className="text-gray-700 dark:text-gray-300">
+      Pour inscrire un enfant ou un adolescent, veuillez vous présenter directement à l'accueil du
+      club.
+    </p>
+    <button
+      type="button"
+      onClick={onClose}
+      className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
+    >
+      Fermer
+    </button>
+  </>
+);
+
 export default function InscriptionForm() {
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
@@ -96,6 +150,7 @@ export default function InscriptionForm() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [currentBirthday, setCurrentBirthday] = useState('');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const photoPreviewRef = useRef<string | null>(null);
 
   // Member detection state
   const [isReturningMember, setIsReturningMember] = useState(false);
@@ -263,19 +318,8 @@ export default function InscriptionForm() {
       if (plan.type !== builderTemporality) return false;
 
       // Match age group and member type
-      let audienceMatch = false;
-
-      // NOTE: Child and teen registrations disabled (adults only policy)
-      // Uncomment below if policy changes:
-      /*
-      if (ageGroup === 'enfant') {
-        audienceMatch = plan.audience === 'child';
-      } else if (ageGroup === 'ado') {
-        audienceMatch = plan.audience === 'teen';
-      } else {
-      */
-
       // ADULTS ONLY - Active policy
+      let audienceMatch = false;
       if (ageGroup === 'adulte') {
         // Adults: show only reduced for returning members, only normal for new members
         if (isReturningMember) {
@@ -284,7 +328,6 @@ export default function InscriptionForm() {
           audienceMatch = plan.audience === 'adult';
         }
       }
-      // } // Uncomment this if re-enabling child/teen
 
       return audienceMatch;
     });
@@ -309,19 +352,8 @@ export default function InscriptionForm() {
     subscriptionPlans.forEach((plan) => {
       if (plan.discipline_id !== builderDiscipline) return;
 
-      let audienceMatch = false;
-
-      // NOTE: Child and teen registrations disabled (adults only policy)
-      // Uncomment below if policy changes:
-      /*
-      if (ageGroup === 'enfant') {
-        audienceMatch = plan.audience === 'child';
-      } else if (ageGroup === 'ado') {
-        audienceMatch = plan.audience === 'teen';
-      } else {
-      */
-
       // ADULTS ONLY - Active policy
+      let audienceMatch = false;
       if (ageGroup === 'adulte') {
         // Adults: show only reduced for returning members, only normal for new members
         if (isReturningMember) {
@@ -330,7 +362,6 @@ export default function InscriptionForm() {
           audienceMatch = plan.audience === 'adult';
         }
       }
-      // } // Uncomment this if re-enabling child/teen
 
       if (audienceMatch) {
         temporalitySet.add(plan.type);
@@ -496,15 +527,34 @@ export default function InscriptionForm() {
     [handleRemoveSubscription]
   );
 
+  // Cleanup photo preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (photoPreviewRef.current) {
+        URL.revokeObjectURL(photoPreviewRef.current);
+      }
+    };
+  }, []);
+
   const handlePhotoChange = useCallback(
     (handleChange: (value: File | undefined) => void) =>
       (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+          // Revoke previous preview URL to prevent memory leak
+          if (photoPreviewRef.current) {
+            URL.revokeObjectURL(photoPreviewRef.current);
+          }
           handleChange(file);
           const previewUrl = URL.createObjectURL(file);
+          photoPreviewRef.current = previewUrl;
           setPhotoPreview(previewUrl);
         } else {
+          // Cleanup when file is removed
+          if (photoPreviewRef.current) {
+            URL.revokeObjectURL(photoPreviewRef.current);
+            photoPreviewRef.current = null;
+          }
           handleChange(undefined);
           setPhotoPreview(null);
         }
@@ -538,6 +588,11 @@ export default function InscriptionForm() {
     child: 'Enfant',
   };
 
+  // Disabled field styling for returning members
+  const disabledFieldClass = isReturningMember
+    ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
+    : '';
+
   const totalPrice = useMemo(() => {
     return selectedSubscriptions.reduce((sum, sub) => sum + sub.price, 0);
   }, [selectedSubscriptions]);
@@ -550,57 +605,6 @@ export default function InscriptionForm() {
     form.setFieldValue('birthday', '');
   }, [form]);
 
-  // Close button component for modal
-  const ModalCloseButton = () => (
-    <button
-      type="button"
-      onClick={handleCloseUnderageModal}
-      className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-      aria-label="Fermer"
-    >
-      <svg
-        className="w-6 h-6"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-        xmlns="http://www.w3.org/2000/svg"
-        role="img"
-      >
-        <title>Fermer</title>
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M6 18L18 6M6 6l12 12"
-        />
-      </svg>
-    </button>
-  );
-
-  // Modal content component
-  const ModalContent = () => (
-    <>
-      <span className="text-5xl">⚠️</span>
-      <h3 className="text-xl font-bold text-orange-600 dark:text-orange-400">
-        Inscription en personne requise
-      </h3>
-      <p className="text-gray-700 dark:text-gray-300">
-        L'inscription en ligne est réservée aux adultes (16 ans et plus).
-      </p>
-      <p className="text-gray-700 dark:text-gray-300">
-        Pour inscrire un enfant ou un adolescent, veuillez vous présenter directement à l'accueil du
-        club.
-      </p>
-      <button
-        type="button"
-        onClick={handleCloseUnderageModal}
-        className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
-      >
-        Fermer
-      </button>
-    </>
-  );
-
   // Modal for underage users - Simple version
   const UnderageModal = () => {
     if (!showUnderageModal) return null;
@@ -608,8 +612,8 @@ export default function InscriptionForm() {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 relative flex flex-col items-center text-center gap-4">
-          <ModalCloseButton />
-          <ModalContent />
+          <ModalCloseButton onClose={handleCloseUnderageModal} />
+          <ModalContent onClose={handleCloseUnderageModal} />
         </div>
       </div>
     );
@@ -686,11 +690,7 @@ export default function InscriptionForm() {
                   onBlur={field.handleBlur}
                   onChange={createTextChangeHandler(field.handleChange)}
                   disabled={isReturningMember}
-                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
-                    isReturningMember
-                      ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
-                      : ''
-                  }`}
+                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${disabledFieldClass}`}
                 />
                 {field.state.meta.errors.length > 0 && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -766,11 +766,7 @@ export default function InscriptionForm() {
                   onBlur={field.handleBlur}
                   onChange={handleBirthdayChange(field.handleChange)}
                   disabled={isReturningMember}
-                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
-                    isReturningMember
-                      ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
-                      : ''
-                  }`}
+                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${disabledFieldClass}`}
                 />
                 {field.state.meta.errors.length > 0 && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -807,11 +803,7 @@ export default function InscriptionForm() {
                   onBlur={field.handleBlur}
                   onChange={createSelectChangeHandler(field.handleChange)}
                   disabled={isReturningMember}
-                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
-                    isReturningMember
-                      ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
-                      : ''
-                  }`}
+                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${disabledFieldClass}`}
                 >
                   <option value="">Sélectionner...</option>
                   <option value="homme">Homme</option>
@@ -930,11 +922,7 @@ export default function InscriptionForm() {
                   onBlur={handleEmailBlur(field.handleBlur)}
                   onChange={createTextChangeHandler(field.handleChange)}
                   disabled={isReturningMember}
-                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${
-                    isReturningMember
-                      ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
-                      : ''
-                  }`}
+                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white ${disabledFieldClass}`}
                 />
                 {field.state.meta.errors.length > 0 && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -1182,7 +1170,10 @@ export default function InscriptionForm() {
 
           <div className="pt-4">
             {selectedSubscriptions.length === 0 && currentBirthday && !isUnderageUser && (
-              <p className="mb-3 text-sm text-amber-600 dark:text-amber-400 text-center">
+              <p
+                id="subscription-warning"
+                className="mb-3 text-sm text-amber-600 dark:text-amber-400 text-center"
+              >
                 Veuillez ajouter au moins un abonnement pour continuer
               </p>
             )}
@@ -1191,6 +1182,11 @@ export default function InscriptionForm() {
               <button
                 type="submit"
                 disabled={isSubmitting || selectedSubscriptions.length === 0}
+                aria-disabled={isSubmitting || selectedSubscriptions.length === 0}
+                aria-busy={isSubmitting}
+                aria-describedby={
+                  selectedSubscriptions.length === 0 ? 'subscription-warning' : undefined
+                }
                 className="w-full px-6 py-3 text-base font-medium text-white bg-purple-600 hover:bg-purple-700 active:translate-y-0.5 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:translate-y-0"
               >
                 {isSubmitting ? 'Inscription en cours...' : "S'inscrire"}
