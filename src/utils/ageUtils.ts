@@ -27,12 +27,12 @@ export function calculateAge(dateString: string): number | null {
 
 /**
  * Get age group based on age
- * - Enfants: 8-10 years (inclusive)
+ * - Enfants: 0-10 years (inclusive)
  * - Ados: 11-15 years (inclusive)
  * - Adultes: 16+ years
  */
 export function getAgeGroup(age: number): AgeGroup {
-  if (age >= 8 && age <= 10) {
+  if (age >= 0 && age <= 10) {
     return 'enfant';
   }
   if (age >= 11 && age <= 15) {

@@ -53,9 +53,10 @@ describe('getAgeGroup', () => {
     expect(getAgeGroup(50)).toBe('adulte');
   });
 
-  test('should classify under 8 as adulte (edge case)', () => {
-    expect(getAgeGroup(7)).toBe('adulte');
-    expect(getAgeGroup(5)).toBe('adulte');
+  test('should classify under 8 as enfant (0-10 years)', () => {
+    expect(getAgeGroup(7)).toBe('enfant');
+    expect(getAgeGroup(5)).toBe('enfant');
+    expect(getAgeGroup(0)).toBe('enfant');
   });
 });
 
