@@ -78,15 +78,6 @@ const formSchema = z.object({
   ),
 });
 
-interface SelectedSubscription {
-  planId: string;
-  disciplineId: string;
-  disciplineName: string;
-  duration: string;
-  price: number;
-  audience: string;
-}
-
 type FormData = z.infer<typeof formSchema>;
 
 // Modal close button component
@@ -188,19 +179,14 @@ export default function InscriptionForm() {
   // Adults-only policy state (using hook)
   const { isUnderageUser, showUnderageModal, checkAge, closeModal } = useUnderagePolicy();
 
-  // Selected subscriptions list (separate from form)
-  const [selectedSubscriptions, setSelectedSubscriptions] = useState<SelectedSubscription[]>([]);
-
   // Subscription builder state (using hook)
   const {
     builderDiscipline,
     builderTemporality,
-    builderSelectedPlans,
     availableTemporalities,
-    filteredPlans,
+    getSelectedPlan,
     setBuilderDiscipline,
     setBuilderTemporality,
-    togglePlan,
     resetBuilder,
   } = useSubscriptionBuilder({
     currentBirthday,
@@ -247,8 +233,9 @@ export default function InscriptionForm() {
       setSubmitSuccess(false);
 
       try {
-        if (selectedSubscriptions.length === 0) {
-          throw new Error("Veuillez ajouter au moins une formule d'abonnement");
+        const selectedPlan = getSelectedPlan();
+        if (!selectedPlan) {
+          throw new Error('Veuillez choisir une discipline et une durée');
         }
 
         const validated = formSchema.parse(value);
@@ -270,7 +257,7 @@ export default function InscriptionForm() {
           notes: 'Inscription web',
         };
 
-        const planIds = selectedSubscriptions.map((sub) => sub.planId);
+        const planIds = [selectedPlan.id];
         const memberId = existingMemberData?.id || crypto.randomUUID();
 
         const photoUploadResult = await uploadIdentityPhoto(validated.identityPhoto, memberId);
@@ -290,7 +277,6 @@ export default function InscriptionForm() {
         setSubmitSuccess(true);
         setWasReturningMember(isReturningMember);
         setCurrentBirthday('');
-        setSelectedSubscriptions([]);
         resetBuilder();
         setPhotoPreview(null);
         setIsReturningMember(false);
@@ -308,7 +294,7 @@ export default function InscriptionForm() {
         setIsSubmitting(false);
       }
     },
-    [selectedSubscriptions, existingMemberData, isReturningMember, resetBuilder, closeModal]
+    [getSelectedPlan, existingMemberData, isReturningMember, resetBuilder, closeModal]
   );
 
   const form = useForm({
@@ -417,60 +403,6 @@ export default function InscriptionForm() {
     [form, checkAge]
   );
 
-  const handleBuilderPlanToggle = useCallback(
-    (planId: string) => {
-      togglePlan(planId);
-    },
-    [togglePlan]
-  );
-
-  const handlePlanCheckboxChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const planId = e.currentTarget.dataset.planId;
-      if (planId) {
-        handleBuilderPlanToggle(planId);
-      }
-    },
-    [handleBuilderPlanToggle]
-  );
-
-  const handleAddSubscriptions = useCallback(() => {
-    if (builderSelectedPlans.length === 0) return;
-
-    const newSubscriptions: SelectedSubscription[] = builderSelectedPlans.map((planId) => {
-      const plan = subscriptionPlans.find((p) => p.id === planId);
-      const discipline = disciplines.find((d) => d.id === builderDiscipline);
-
-      return {
-        planId,
-        disciplineId: builderDiscipline,
-        disciplineName: discipline?.name || '',
-        duration: plan?.duration || '',
-        price: plan?.price || 0,
-        audience: plan?.audience || '',
-      };
-    });
-
-    setSelectedSubscriptions((prev) => [...prev, ...newSubscriptions]);
-
-    // Reset builder
-    resetBuilder();
-  }, [builderSelectedPlans, builderDiscipline, subscriptionPlans, disciplines, resetBuilder]);
-
-  const handleRemoveSubscription = useCallback((planId: string) => {
-    setSelectedSubscriptions((prev) => prev.filter((sub) => sub.planId !== planId));
-  }, []);
-
-  const handleRemoveClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      const planId = e.currentTarget.dataset.planId;
-      if (planId) {
-        handleRemoveSubscription(planId);
-      }
-    },
-    [handleRemoveSubscription]
-  );
-
   // Cleanup photo preview URL on unmount
   useEffect(() => {
     return () => {
@@ -540,35 +472,38 @@ export default function InscriptionForm() {
     ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
     : '';
 
-  const totalPrice = useMemo(() => {
-    return selectedSubscriptions.reduce((sum, sub) => sum + sub.price, 0);
-  }, [selectedSubscriptions]);
+  // Get current selected subscription plan
+  const currentSubscription = useMemo(() => {
+    const plan = getSelectedPlan();
+    if (!plan) return null;
 
-  // Handle closing underage modal and resetting birthday
-  const handleCloseUnderageModal = useCallback(() => {
-    closeModal();
-    setCurrentBirthday('');
-    form.setFieldValue('birthday', '');
-  }, [form, closeModal]);
+    const discipline = disciplines.find((d) => d.id === builderDiscipline);
+    return {
+      planId: plan.id,
+      disciplineId: builderDiscipline,
+      disciplineName: discipline?.name || '',
+      duration: plan.duration,
+      price: plan.price,
+      audience: plan.audience,
+    };
+  }, [getSelectedPlan, disciplines, builderDiscipline]);
 
-  // Computed display conditions (reduces cyclomatic complexity in JSX)
+  const totalPrice = currentSubscription?.price || 0;
+
+  // Computed variables for cleaner JSX conditionals
   const canShowBuilder = currentBirthday && !isUnderageUser;
   const canShowNoBirthdayMessage = !currentBirthday;
-  const showSubmitWarning =
-    selectedSubscriptions.length === 0 && currentBirthday && !isUnderageUser;
+  const showSubmitWarning = !currentSubscription && currentBirthday && !isUnderageUser;
   const canSubmit = !isUnderageUser;
-  const isSubmitDisabled = isSubmitting || selectedSubscriptions.length === 0;
+  const isSubmitDisabled = isSubmitting || !currentSubscription;
   const showReturningMemberBanner = isReturningMember && !submitSuccess;
   const showNewMemberInfo = !isReturningMember && !submitSuccess;
   const showTemporalitySelector = !!builderDiscipline;
-  const showPlanSelector = !!(builderTemporality && filteredPlans.length > 0);
-  const showAddButton = builderSelectedPlans.length > 0;
-  const showNoPlansMessage = !!(builderTemporality && filteredPlans.length === 0);
 
   return (
     <>
       {/* Modal for underage users */}
-      <UnderageModal show={showUnderageModal} onClose={handleCloseUnderageModal} />
+      <UnderageModal show={showUnderageModal} onClose={closeModal} />
 
       <div className="w-full max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
         <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
@@ -939,40 +874,27 @@ export default function InscriptionForm() {
           </form.Field>
 
           {/* Selected Subscriptions Summary */}
-          {selectedSubscriptions.length > 0 && (
+          {currentSubscription && (
             <div className="border-2 border-purple-200 dark:border-purple-800 rounded-lg p-4 bg-purple-50 dark:bg-purple-900/20">
               <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
-                Abonnements sélectionnés ({selectedSubscriptions.length})
+                Votre abonnement
               </h3>
               <div className="space-y-2">
-                {selectedSubscriptions.map((sub) => (
-                  <div
-                    key={sub.planId}
-                    className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700"
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900 dark:text-gray-100">
-                        {sub.disciplineName} - {temporalityLabels[sub.duration] || sub.duration}
-                      </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {audienceLabels[sub.audience] || sub.audience}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                        {sub.price}€
-                      </span>
-                      <button
-                        type="button"
-                        data-plan-id={sub.planId}
-                        onClick={handleRemoveClick}
-                        className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium"
-                      >
-                        ✕
-                      </button>
-                    </div>
+                <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900 dark:text-gray-100">
+                      {currentSubscription.disciplineName} -{' '}
+                      {temporalityLabels[currentSubscription.duration] ||
+                        currentSubscription.duration}
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {audienceLabels[currentSubscription.audience] || currentSubscription.audience}
+                    </p>
                   </div>
-                ))}
+                  <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                    {currentSubscription.price}€
+                  </span>
+                </div>
               </div>
               <div className="mt-3 pt-3 border-t border-purple-300 dark:border-purple-700">
                 <div className="flex justify-between items-center">
@@ -991,17 +913,10 @@ export default function InscriptionForm() {
               disciplines={disciplines}
               builderDiscipline={builderDiscipline}
               builderTemporality={builderTemporality}
-              builderSelectedPlans={builderSelectedPlans}
               availableTemporalities={availableTemporalities}
-              filteredPlans={filteredPlans}
               showTemporalitySelector={showTemporalitySelector}
-              showPlanSelector={showPlanSelector}
-              showAddButton={showAddButton}
-              showNoPlansMessage={showNoPlansMessage}
               handleDisciplineChange={handleDisciplineChange}
               handleTemporalityChange={handleTemporalityChange}
-              handlePlanCheckboxChange={handlePlanCheckboxChange}
-              handleAddSubscriptions={handleAddSubscriptions}
             />
           )}
 
@@ -1019,7 +934,7 @@ export default function InscriptionForm() {
                 id="subscription-warning"
                 className="mb-3 text-sm text-amber-600 dark:text-amber-400 text-center"
               >
-                Veuillez ajouter au moins un abonnement pour continuer
+                Veuillez choisir une discipline et une durée pour continuer
               </p>
             )}
             {/* Hide submit button for underage users (adults only policy) */}
@@ -1029,9 +944,7 @@ export default function InscriptionForm() {
                 disabled={isSubmitDisabled}
                 aria-disabled={isSubmitDisabled}
                 aria-busy={isSubmitting}
-                aria-describedby={
-                  selectedSubscriptions.length === 0 ? 'subscription-warning' : undefined
-                }
+                aria-describedby={!currentSubscription ? 'subscription-warning' : undefined}
                 className="w-full px-6 py-3 text-base font-medium text-white bg-purple-600 hover:bg-purple-700 active:translate-y-0.5 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:translate-y-0"
               >
                 {isSubmitting ? 'Inscription en cours...' : "S'inscrire"}
