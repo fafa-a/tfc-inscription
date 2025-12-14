@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 import { FormStatusBanner } from './components/FormStatusBanner';
 import { SubscriptionBuilderSection } from './components/SubscriptionBuilderSection';
+import { SubscriptionSummary } from './components/SubscriptionSummary';
 import { useFormUIState } from './hooks/useFormUIState';
 import { useSubscriptionBuilder } from './hooks/useSubscriptionBuilder';
 import { useUnderagePolicy } from './hooks/useUnderagePolicy';
@@ -1039,36 +1040,17 @@ export default function InscriptionForm() {
 
           {/* Selected Subscriptions Summary */}
           {currentSubscription && (
-            <div className="border-2 border-purple-200 dark:border-purple-800 rounded-lg p-4 bg-purple-50 dark:bg-purple-900/20">
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
-                Votre abonnement
-              </h3>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900 dark:text-gray-100">
-                      {currentSubscription.disciplineName} -{' '}
-                      {temporalityLabels[currentSubscription.duration] ||
-                        currentSubscription.duration}
-                    </p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {audienceLabels[currentSubscription.audience] || currentSubscription.audience}
-                    </p>
-                  </div>
-                  <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                    {currentSubscription.price}€
-                  </span>
-                </div>
-              </div>
-              <div className="mt-3 pt-3 border-t border-purple-300 dark:border-purple-700">
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold text-gray-800 dark:text-gray-200">Total:</span>
-                  <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                    {totalPrice}€
-                  </span>
-                </div>
-              </div>
-            </div>
+            <SubscriptionSummary
+              disciplineName={currentSubscription.disciplineName}
+              duration={
+                temporalityLabels[currentSubscription.duration] || currentSubscription.duration
+              }
+              audience={
+                audienceLabels[currentSubscription.audience] || currentSubscription.audience
+              }
+              price={currentSubscription.price}
+              totalPrice={totalPrice}
+            />
           )}
 
           {/* Subscription Builder - Hidden for underage users (adults only policy) */}
