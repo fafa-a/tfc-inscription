@@ -1,34 +1,55 @@
 # Agent Guidelines for tfc-inscription
 
-## Build & Test Commands
-- **Install**: `bun install`
-- **Build**: `bun run build`
-- **Lint**: `bun run lint`
-- **Test (all)**: `bun test`
-- **Test (single file)**: `bun test <path/to/test>`
-- **Test (watch)**: `bun test --watch`
+## Stack
 
-## Code Style
-- **Runtime**: Bun (not Node.js)
-- **Framework**: React with TypeScript
-- **Testing**: Vitest (configured in DeepSource)
-- **Imports**: Use ESM syntax, group by external → internal → relative
-- **Types**: Strict TypeScript - no implicit any, prefer interfaces for objects
-- **Naming**: camelCase for variables/functions, PascalCase for components/classes
-- **Error Handling**: Use try-catch for async, Error boundaries for React
-- **Formatting**: Run lint before commits, fix issues automatically when possible
-- **Event Handlers**: Avoid inline arrow functions in JSX event handlers - use useCallback or named functions to prevent unnecessary re-renders
-- **Non-null Assertions**: Never use non-null assertions (!) - always handle null/undefined cases explicitly
-- **Function Binding**: Never use .bind() - use arrow functions or useCallback instead
-- **Console Statements**: Never use console.log, console.error, or other console methods in production code - remove all console statements
+- Runtime: Bun (not Node.js)
+- Frontend: React + TypeScript (strict)
+- Tests: Vitest (CI/DeepSource)
 
-## Agent Behavior
+## Commands (DO NOT run unless user explicitly asks)
 
-- **Always ask the user before running build commands** - Don't run them automatically unless explicitly requested
-- Let the user decide when to verify their build
+- Install: `bun install`
+- Build: `bun run build`
+- Lint: `bun run lint`
+- Test all: `bun test`
+- Test single: `bun test <path/to/test>`
+- Test watch: `bun test --watch`
+
+## Token / Output Budget (very important)
+
+- Keep responses short and actionable:
+  - Summary: max 3 bullets
+  - Quick wins: max 5 bullets
+- Do NOT paste full command output. If user provides logs:
+  - Quote only the most relevant lines (max ~50 lines total).
+- Do NOT re-list commands unless asked. Refer to them by name (Install/Build/Lint/Test).
+
+## Code Style Rules
+
+- Imports: ESM; group external → internal → relative
+- Types: strict TS; no implicit any; prefer interfaces for object shapes
+- Naming: camelCase vars/functions; PascalCase components/classes
+- React:
+  - Avoid inline arrow functions in JSX handlers
+  - Use `useCallback` or named functions to reduce re-renders
+  - Use Error Boundaries where appropriate
+- Nullability:
+  - Never use non-null assertions (`!`)
+  - Handle null/undefined explicitly
+- Never use `.bind()`
+- No console.* in production code (remove all)
+
+## Agent behavior (must follow)
+
+- Default mode = "review/plan":
+  - Analyze + propose minimal patches and refactors
+  - Do NOT run Lint/Test/Build unless user explicitly requests
+- If user asks to verify:
+  - Run at most ONE command (prefer Lint first), then stop and report concisely
+- If changes are large:
+  - Propose a staged plan (small commits), but do not execute commands automatically
 
 ## Notes
 
-## Notes
-- CI runs on all PRs and main branch pushes
+- CI runs on PRs and pushes to main
 - DeepSource analyzer enabled for JavaScript/React
