@@ -18,16 +18,14 @@ export function SubscriptionSummary({
       <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
         Votre abonnement
       </h3>
-      <div className="space-y-2">
-        <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
-          <div className="flex-1">
-            <p className="font-medium text-gray-900 dark:text-gray-100">
-              {disciplineName} - {duration}
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">{audience}</p>
-          </div>
-          <span className="text-lg font-bold text-purple-600 dark:text-purple-400">{price}€</span>
+      <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
+        <div className="flex-1">
+          <p className="font-medium text-gray-900 dark:text-gray-100">
+            {disciplineName} - {duration}
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{audience}</p>
         </div>
+        <span className="text-lg font-bold text-purple-600 dark:text-purple-400">{price}€</span>
       </div>
       <div className="mt-3 pt-3 border-t border-purple-300 dark:border-purple-700">
         <div className="flex justify-between items-center">
