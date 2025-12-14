@@ -1,7 +1,9 @@
 import { useForm } from '@tanstack/react-form';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
+import { FormStatusBanner } from './components/FormStatusBanner';
 import { SubscriptionBuilderSection } from './components/SubscriptionBuilderSection';
+import { useFormUIState } from './hooks/useFormUIState';
 import { useSubscriptionBuilder } from './hooks/useSubscriptionBuilder';
 import { useUnderagePolicy } from './hooks/useUnderagePolicy';
 import {
@@ -12,6 +14,7 @@ import {
   insertMemberWithSubscriptions,
   supabase,
 } from './lib/supabase';
+import { handleFormValidationError } from './utils/formErrorHandler';
 import { uploadIdentityPhoto, validateImageFile } from './utils/uploadPhoto';
 
 const formatDateInput = (value: string, previousValue: string): string => {
@@ -222,12 +225,7 @@ const InfoModal: React.FC<InfoModalProps> = ({
 export default function InscriptionForm() {
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
   const [currentBirthday, setCurrentBirthday] = useState('');
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const photoPreviewRef = useRef<string | null>(null);
 
   // Member detection state
   const [isReturningMember, setIsReturningMember] = useState(false);
@@ -245,13 +243,6 @@ export default function InscriptionForm() {
   // Adults-only policy state (using hook)
   const { isUnderageUser, showUnderageModal, checkAge, closeModal } = useUnderagePolicy();
 
-  // Form error modal state
-  const [showFormErrorModal, setShowFormErrorModal] = useState(false);
-  const [formErrorMessages, setFormErrorMessages] = useState<string[]>([]);
-
-  // Success modal state
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-
   // Subscription builder state (using hook)
   const {
     builderDiscipline,
@@ -265,6 +256,55 @@ export default function InscriptionForm() {
     currentBirthday,
     isReturningMember,
     subscriptionPlans,
+  });
+
+  // Get current selected subscription plan
+  const currentSubscription = useMemo(() => {
+    const plan = getSelectedPlan();
+    if (!plan) return null;
+
+    const discipline = disciplines.find((d) => d.id === builderDiscipline);
+    return {
+      planId: plan.id,
+      disciplineId: builderDiscipline,
+      disciplineName: discipline?.name || '',
+      duration: plan.duration,
+      price: plan.price,
+      audience: plan.audience,
+    };
+  }, [getSelectedPlan, disciplines, builderDiscipline]);
+
+  // UI state (using hook)
+  const {
+    isSubmitting,
+    setIsSubmitting,
+    submitError,
+    setSubmitError,
+    submitSuccess,
+    setSubmitSuccess,
+    showFormErrorModal,
+    setShowFormErrorModal,
+    formErrorMessages,
+    setFormErrorMessages,
+    showSuccessModal,
+    setShowSuccessModal,
+    photoPreview,
+    setPhotoPreview,
+    photoPreviewRef,
+    canShowBuilder,
+    canShowNoBirthdayMessage,
+    showSubmitWarning,
+    canSubmit,
+    isSubmitDisabled,
+    showReturningMemberBanner,
+    showNewMemberInfo,
+    showTemporalitySelector,
+  } = useFormUIState({
+    isReturningMember,
+    currentBirthday,
+    isUnderageUser,
+    builderDiscipline,
+    currentSubscription,
   });
 
   useEffect(() => {
@@ -304,7 +344,7 @@ export default function InscriptionForm() {
     setShowFormErrorModal(false); // Close form error modal
     setFormErrorMessages([]);
     setShowSuccessModal(false); // Close success modal
-  }, [closeModal]);
+  }, [closeModal, setShowFormErrorModal, setFormErrorMessages, setShowSuccessModal]);
 
   // Focus and scroll to first error field
   const focusFirstErrorField = useCallback((errors: z.ZodIssue[]) => {
@@ -380,20 +420,12 @@ export default function InscriptionForm() {
         setExistingMemberData(null);
         closeModal();
       } catch (error) {
-        if (error instanceof z.ZodError) {
-          // Extract error messages from Zod validation
-          const errors = error.issues.map((issue) => issue.message);
-          setFormErrorMessages(errors);
-          setShowFormErrorModal(true);
-          focusFirstErrorField(error.issues);
-        } else {
-          // Other errors (photo upload, DB, etc.)
-          const errorMessage =
-            error instanceof Error
-              ? error.message
-              : "Une erreur est survenue lors de l'inscription";
-          setSubmitError(errorMessage);
-        }
+        handleFormValidationError(error, {
+          setFormErrorMessages,
+          setShowFormErrorModal,
+          focusFirstErrorField,
+          setSubmitError,
+        });
       } finally {
         setIsSubmitting(false);
       }
@@ -405,6 +437,13 @@ export default function InscriptionForm() {
       resetBuilder,
       closeModal,
       focusFirstErrorField,
+      setIsSubmitting,
+      setSubmitError,
+      setSubmitSuccess,
+      setShowSuccessModal,
+      setPhotoPreview,
+      setFormErrorMessages,
+      setShowFormErrorModal,
     ]
   );
 
@@ -477,7 +516,7 @@ export default function InscriptionForm() {
         }
       }, 100);
     },
-    [form]
+    [form, setFormErrorMessages, setShowFormErrorModal]
   );
 
   // Handle modal close with birthday reset for underage modal
@@ -579,6 +618,7 @@ export default function InscriptionForm() {
         URL.revokeObjectURL(photoPreviewRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePhotoChange = useCallback(
@@ -604,7 +644,7 @@ export default function InscriptionForm() {
           setPhotoPreview(null);
         }
       },
-    []
+    [photoPreviewRef, setPhotoPreview]
   );
 
   const handleDisciplineChange = useCallback(
@@ -641,33 +681,7 @@ export default function InscriptionForm() {
     ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
     : '';
 
-  // Get current selected subscription plan
-  const currentSubscription = useMemo(() => {
-    const plan = getSelectedPlan();
-    if (!plan) return null;
-
-    const discipline = disciplines.find((d) => d.id === builderDiscipline);
-    return {
-      planId: plan.id,
-      disciplineId: builderDiscipline,
-      disciplineName: discipline?.name || '',
-      duration: plan.duration,
-      price: plan.price,
-      audience: plan.audience,
-    };
-  }, [getSelectedPlan, disciplines, builderDiscipline]);
-
   const totalPrice = currentSubscription?.price || 0;
-
-  // Computed variables for cleaner JSX conditionals
-  const canShowBuilder = currentBirthday && !isUnderageUser;
-  const canShowNoBirthdayMessage = !currentBirthday;
-  const showSubmitWarning = !currentSubscription && currentBirthday && !isUnderageUser;
-  const canSubmit = !isUnderageUser;
-  const isSubmitDisabled = isSubmitting || !currentSubscription;
-  const showReturningMemberBanner = isReturningMember && !submitSuccess;
-  const showNewMemberInfo = !isReturningMember && !submitSuccess;
-  const showTemporalitySelector = !!builderDiscipline;
 
   return (
     <>
@@ -685,38 +699,13 @@ export default function InscriptionForm() {
           Formulaire d'inscription
         </h2>
 
-        {showNewMemberInfo && (
-          <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
-            <p className="text-purple-800 dark:text-purple-200 text-sm">
-              💡 <strong>Anciens membres :</strong> Commencez par renseigner votre email pour
-              pré-remplir vos informations
-            </p>
-          </div>
-        )}
-
-        {submitSuccess && (
-          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <p className="text-green-800 dark:text-green-200 font-medium">
-              ✓ {wasReturningMember ? 'Réinscription' : 'Inscription'} réussie ! Votre demande a été
-              enregistrée.
-            </p>
-          </div>
-        )}
-
-        {submitError && (
-          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-            <p className="text-red-800 dark:text-red-200 font-medium">✗ {submitError}</p>
-          </div>
-        )}
-
-        {showReturningMemberBanner && (
-          <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <p className="text-blue-800 dark:text-blue-200 font-medium">
-              i Ancien membre détecté - Veuillez vérifier vos informations et télécharger une
-              nouvelle photo d'identité pour votre réinscription
-            </p>
-          </div>
-        )}
+        <FormStatusBanner
+          showNewMemberInfo={showNewMemberInfo}
+          submitSuccess={submitSuccess}
+          submitError={submitError}
+          showReturningMemberBanner={showReturningMemberBanner}
+          wasReturningMember={wasReturningMember}
+        />
 
         <form onSubmit={handleFormSubmit} className="space-y-4">
           <form.Field
