@@ -15,40 +15,11 @@ export function useSubscriptionBuilder({
 }: UseSubscriptionBuilderProps) {
   const [builderDiscipline, setBuilderDisciplineState] = useState('');
   const [builderTemporality, setBuilderTemporalityState] = useState('');
-  const [builderSelectedPlans, setBuilderSelectedPlans] = useState<string[]>([]);
 
   const ageGroup: AgeGroup | null = useMemo(() => {
     if (!currentBirthday) return null;
     return getAgeGroupFromBirthday(currentBirthday);
   }, [currentBirthday]);
-
-  const filteredPlans = useMemo(() => {
-    if (!currentBirthday || !ageGroup || !builderDiscipline || !builderTemporality) {
-      return [];
-    }
-
-    return subscriptionPlans.filter((plan) => {
-      // Match discipline
-      if (plan.discipline_id !== builderDiscipline) return false;
-
-      // Match temporality
-      if (plan.type !== builderTemporality) return false;
-
-      // ADULTS ONLY - Active policy
-      if (ageGroup === 'adulte') {
-        return isReturningMember ? plan.audience === 'reduced' : plan.audience === 'adult';
-      }
-
-      return false;
-    });
-  }, [
-    currentBirthday,
-    ageGroup,
-    builderDiscipline,
-    builderTemporality,
-    subscriptionPlans,
-    isReturningMember,
-  ]);
 
   const availableTemporalities = useMemo(() => {
     if (!currentBirthday || !ageGroup || !builderDiscipline) {
@@ -79,36 +50,42 @@ export function useSubscriptionBuilder({
   const setBuilderDiscipline = useCallback((id: string) => {
     setBuilderDisciplineState(id);
     setBuilderTemporalityState('');
-    setBuilderSelectedPlans([]);
   }, []);
 
   const setBuilderTemporality = useCallback((type: string) => {
     setBuilderTemporalityState(type);
-    setBuilderSelectedPlans([]);
-  }, []);
-
-  const togglePlan = useCallback((planId: string) => {
-    setBuilderSelectedPlans((prev) =>
-      prev.includes(planId) ? prev.filter((id) => id !== planId) : [...prev, planId]
-    );
   }, []);
 
   const resetBuilder = useCallback(() => {
     setBuilderDisciplineState('');
     setBuilderTemporalityState('');
-    setBuilderSelectedPlans([]);
   }, []);
+
+  const getSelectedPlan = useCallback((): SubscriptionPlan | null => {
+    if (!builderDiscipline || !builderTemporality || !ageGroup) return null;
+
+    return (
+      subscriptionPlans.find(
+        (plan) =>
+          plan.discipline_id === builderDiscipline &&
+          plan.type === builderTemporality &&
+          (ageGroup === 'adulte'
+            ? isReturningMember
+              ? plan.audience === 'reduced'
+              : plan.audience === 'adult'
+            : false)
+      ) || null
+    );
+  }, [builderDiscipline, builderTemporality, ageGroup, subscriptionPlans, isReturningMember]);
 
   return {
     builderDiscipline,
     builderTemporality,
-    builderSelectedPlans,
     ageGroup,
     availableTemporalities,
-    filteredPlans,
+    getSelectedPlan,
     setBuilderDiscipline,
     setBuilderTemporality,
-    togglePlan,
     resetBuilder,
   };
 }
