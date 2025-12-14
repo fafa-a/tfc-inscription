@@ -109,45 +109,111 @@ const ModalCloseButton: React.FC<ModalCloseButtonProps> = ({ onClose }) => (
 // Modal content component
 interface ModalContentProps {
   onClose: () => void;
+  type: 'underage' | 'form-error' | 'success';
+  formErrors?: string[];
+  wasReturningMember?: boolean;
 }
 
-const ModalContent: React.FC<ModalContentProps> = ({ onClose }) => (
-  <>
-    <span className="text-5xl">⚠️</span>
-    <h3 className="text-xl font-bold text-orange-600 dark:text-orange-400">
-      Inscription en personne requise
-    </h3>
-    <p className="text-gray-700 dark:text-gray-300">
-      L'inscription en ligne est réservée aux adultes (16 ans et plus).
-    </p>
-    <p className="text-gray-700 dark:text-gray-300">
-      Pour inscrire un enfant ou un adolescent, veuillez vous présenter directement à l'accueil du
-      club.
-    </p>
-    <button
-      type="button"
-      onClick={onClose}
-      className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
-    >
-      Fermer
-    </button>
-  </>
-);
+const ModalContent: React.FC<ModalContentProps> = ({
+  onClose,
+  type,
+  formErrors,
+  wasReturningMember,
+}) => {
+  if (type === 'success') {
+    return (
+      <>
+        <h3 className="text-lg font-semibold text-green-700 dark:text-green-400 w-full text-left">
+          {wasReturningMember ? 'Réinscription réussie' : 'Inscription réussie'}
+        </h3>
+        <p className="text-gray-700 dark:text-gray-300 w-full text-left">
+          Votre demande a été enregistrée avec succès.
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
+        >
+          Fermer
+        </button>
+      </>
+    );
+  }
 
-// Underage modal component
-interface UnderageModalProps {
+  if (type === 'form-error') {
+    return (
+      <>
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 w-full text-left">
+          Erreurs du formulaire
+        </h3>
+        <ul className="text-left text-gray-700 dark:text-gray-300 space-y-1 w-full list-disc list-inside">
+          {formErrors?.map((error) => (
+            <li key={error}>{error}</li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
+        >
+          Fermer
+        </button>
+      </>
+    );
+  }
+
+  // Underage content (default)
+  return (
+    <>
+      <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 w-full text-left">
+        Inscription en personne requise
+      </h3>
+      <p className="text-gray-700 dark:text-gray-300 w-full text-left">
+        L'inscription en ligne est réservée aux adultes (16 ans et plus).
+      </p>
+      <p className="text-gray-700 dark:text-gray-300 w-full text-left">
+        Pour inscrire un enfant ou un adolescent, veuillez vous présenter directement à l'accueil du
+        club.
+      </p>
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
+      >
+        Fermer
+      </button>
+    </>
+  );
+};
+
+// Info modal component (underage, form errors, or success)
+interface InfoModalProps {
   show: boolean;
   onClose: () => void;
+  type: 'underage' | 'form-error' | 'success';
+  formErrors?: string[];
+  wasReturningMember?: boolean;
 }
 
-const UnderageModal: React.FC<UnderageModalProps> = ({ show, onClose }) => {
+const InfoModal: React.FC<InfoModalProps> = ({
+  show,
+  onClose,
+  type,
+  formErrors,
+  wasReturningMember,
+}) => {
   if (!show) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 relative flex flex-col items-center text-center gap-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 relative flex flex-col gap-4">
         <ModalCloseButton onClose={onClose} />
-        <ModalContent onClose={onClose} />
+        <ModalContent
+          onClose={onClose}
+          type={type}
+          formErrors={formErrors}
+          wasReturningMember={wasReturningMember}
+        />
       </div>
     </div>
   );
@@ -178,6 +244,13 @@ export default function InscriptionForm() {
 
   // Adults-only policy state (using hook)
   const { isUnderageUser, showUnderageModal, checkAge, closeModal } = useUnderagePolicy();
+
+  // Form error modal state
+  const [showFormErrorModal, setShowFormErrorModal] = useState(false);
+  const [formErrorMessages, setFormErrorMessages] = useState<string[]>([]);
+
+  // Success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // Subscription builder state (using hook)
   const {
@@ -223,6 +296,29 @@ export default function InscriptionForm() {
     };
 
     fetchData();
+  }, []);
+
+  // Close all modals (underage + form errors + success)
+  const closeAllModals = useCallback(() => {
+    closeModal(); // Close underage modal
+    setShowFormErrorModal(false); // Close form error modal
+    setFormErrorMessages([]);
+    setShowSuccessModal(false); // Close success modal
+  }, [closeModal]);
+
+  // Focus and scroll to first error field
+  const focusFirstErrorField = useCallback((errors: z.ZodIssue[]) => {
+    if (errors.length > 0) {
+      const firstFieldName = errors[0].path[0] as string;
+      const inputElement = document.querySelector(
+        `input[id="${firstFieldName}"], select[id="${firstFieldName}"], input[name="${firstFieldName}"]`
+      ) as HTMLInputElement | HTMLSelectElement | null;
+
+      if (inputElement) {
+        inputElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => inputElement.focus(), 300); // Wait for scroll to finish
+      }
+    }
   }, []);
 
   // Extract submit handler to reduce complexity
@@ -276,6 +372,7 @@ export default function InscriptionForm() {
 
         setSubmitSuccess(true);
         setWasReturningMember(isReturningMember);
+        setShowSuccessModal(true); // Show success modal
         setCurrentBirthday('');
         resetBuilder();
         setPhotoPreview(null);
@@ -283,18 +380,32 @@ export default function InscriptionForm() {
         setExistingMemberData(null);
         closeModal();
       } catch (error) {
-        const errorMessage =
-          error instanceof z.ZodError
-            ? 'Veuillez vérifier tous les champs du formulaire'
-            : error instanceof Error
+        if (error instanceof z.ZodError) {
+          // Extract error messages from Zod validation
+          const errors = error.issues.map((issue) => issue.message);
+          setFormErrorMessages(errors);
+          setShowFormErrorModal(true);
+          focusFirstErrorField(error.issues);
+        } else {
+          // Other errors (photo upload, DB, etc.)
+          const errorMessage =
+            error instanceof Error
               ? error.message
               : "Une erreur est survenue lors de l'inscription";
-        setSubmitError(errorMessage);
+          setSubmitError(errorMessage);
+        }
       } finally {
         setIsSubmitting(false);
       }
     },
-    [getSelectedPlan, existingMemberData, isReturningMember, resetBuilder, closeModal]
+    [
+      getSelectedPlan,
+      existingMemberData,
+      isReturningMember,
+      resetBuilder,
+      closeModal,
+      focusFirstErrorField,
+    ]
   );
 
   const form = useForm({
@@ -319,9 +430,67 @@ export default function InscriptionForm() {
       e.preventDefault();
       e.stopPropagation();
       form.handleSubmit();
+
+      // Check for validation errors after submit attempt
+      setTimeout(() => {
+        const errors: string[] = [];
+        const fieldNames: (keyof FormData)[] = [
+          'firstname',
+          'lastname',
+          'birthday',
+          'genre',
+          'phone',
+          'urgencyPhone',
+          'email',
+          'identityPhoto',
+        ];
+
+        // Collect all field errors
+        fieldNames.forEach((fieldName) => {
+          const fieldState = form.getFieldMeta(fieldName);
+          if (fieldState?.errors && fieldState.errors.length > 0) {
+            errors.push(...fieldState.errors);
+          }
+        });
+
+        // Show modal if there are errors
+        if (errors.length > 0) {
+          setFormErrorMessages(errors);
+          setShowFormErrorModal(true);
+
+          // Focus first error field
+          const firstErrorField = fieldNames.find((fieldName) => {
+            const fieldState = form.getFieldMeta(fieldName);
+            return fieldState?.errors && fieldState.errors.length > 0;
+          });
+
+          if (firstErrorField) {
+            const inputElement = document.querySelector(
+              `input[id="${firstErrorField}"], select[id="${firstErrorField}"], input[name="${firstErrorField}"]`
+            ) as HTMLInputElement | HTMLSelectElement | null;
+
+            if (inputElement) {
+              inputElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              setTimeout(() => inputElement.focus(), 300);
+            }
+          }
+        }
+      }, 100);
     },
     [form]
   );
+
+  // Handle modal close with birthday reset for underage modal
+  const handleModalClose = useCallback(() => {
+    // If underage modal is open, reset birthday field
+    if (showUnderageModal) {
+      form.setFieldValue('birthday', '');
+      setCurrentBirthday('');
+    }
+
+    // Close all modals
+    closeAllModals();
+  }, [showUnderageModal, form, closeAllModals]);
 
   const createTextChangeHandler = useCallback(
     <T,>(handleChange: (value: T) => void) =>
@@ -502,8 +671,14 @@ export default function InscriptionForm() {
 
   return (
     <>
-      {/* Modal for underage users */}
-      <UnderageModal show={showUnderageModal} onClose={closeModal} />
+      {/* Modal for underage users, form errors, or success */}
+      <InfoModal
+        show={showUnderageModal || showFormErrorModal || showSuccessModal}
+        onClose={handleModalClose}
+        type={showSuccessModal ? 'success' : showFormErrorModal ? 'form-error' : 'underage'}
+        formErrors={formErrorMessages}
+        wasReturningMember={wasReturningMember}
+      />
 
       <div className="w-full max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
         <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
