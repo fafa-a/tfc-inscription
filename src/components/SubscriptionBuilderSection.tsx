@@ -1,3 +1,4 @@
+import { temporalityLabels } from '../constants/labels';
 import type { Discipline } from '../lib/supabase';
 
 interface SubscriptionBuilderSectionProps {
@@ -9,14 +10,6 @@ interface SubscriptionBuilderSectionProps {
   handleDisciplineChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleTemporalityChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
-
-const temporalityLabels: Record<string, string> = {
-  season: 'Saison',
-  yearly: 'Année',
-  semester1: 'Semestre',
-  quarter: 'Trimestre',
-  month: 'Mois',
-};
 
 export function SubscriptionBuilderSection({
   disciplines,

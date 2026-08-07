@@ -3,7 +3,7 @@ import { z } from 'zod';
 interface FormErrorCallbacks {
   setFormErrorMessages: (msgs: string[]) => void;
   setShowFormErrorModal: (show: boolean) => void;
-  focusFirstErrorField: (issues: z.ZodIssue[]) => void;
+  focusFirstErrorField: (fieldNames: string[]) => void;
   setSubmitError: (msg: string | null) => void;
 }
 
@@ -14,9 +14,10 @@ export function handleFormValidationError(
   if (error instanceof z.ZodError) {
     // Extract error messages from Zod validation
     const errors = error.issues.map((issue) => issue.message);
+    const fieldNames = error.issues.map((issue) => String(issue.path[0]));
     callbacks.setFormErrorMessages(errors);
     callbacks.setShowFormErrorModal(true);
-    callbacks.focusFirstErrorField(error.issues);
+    callbacks.focusFirstErrorField(fieldNames);
   } else {
     // Other errors (photo upload, DB, etc.)
     const errorMessage =

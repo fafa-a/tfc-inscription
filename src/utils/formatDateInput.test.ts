@@ -1,27 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-
-// Utility function to format date input as DD/MM/YYYY
-const formatDateInput = (value: string, previousValue: string): string => {
-  // Remove all non-digits
-  const digits = value.replace(/\D/g, '');
-
-  // Limit to 8 digits (DDMMYYYY)
-  const limitedDigits = digits.slice(0, 8);
-
-  // Check if user is deleting (going backwards)
-  const isDeleting = value.length < previousValue.length;
-
-  // Add slashes at appropriate positions
-  if (limitedDigits.length >= 4) {
-    const formatted = `${limitedDigits.slice(0, 2)}/${limitedDigits.slice(2, 4)}/${limitedDigits.slice(4)}`;
-    return formatted;
-  }
-  if (limitedDigits.length >= 2 && !isDeleting) {
-    const formatted = `${limitedDigits.slice(0, 2)}/${limitedDigits.slice(2)}`;
-    return formatted;
-  }
-  return limitedDigits;
-};
+import { formatDateInput } from './formatDateInput';
 
 describe('formatDateInput', () => {
   test('should format date input with slashes', () => {

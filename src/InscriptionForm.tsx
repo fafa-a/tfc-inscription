@@ -1,9 +1,12 @@
 import { useForm } from '@tanstack/react-form';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import { FormStatusBanner } from './components/FormStatusBanner';
+import { InfoModal } from './components/InfoModal';
 import { SubscriptionBuilderSection } from './components/SubscriptionBuilderSection';
 import { SubscriptionSummary } from './components/SubscriptionSummary';
+import { audienceLabels, temporalityLabels } from './constants/labels';
+import { genderMap, reverseGenderMap } from './constants/mappings';
 import { useFormUIState } from './hooks/useFormUIState';
 import { useSubscriptionBuilder } from './hooks/useSubscriptionBuilder';
 import { useUnderagePolicy } from './hooks/useUnderagePolicy';
@@ -16,23 +19,8 @@ import {
   supabase,
 } from './lib/supabase';
 import { handleFormValidationError } from './utils/formErrorHandler';
+import { formatDateInput } from './utils/formatDateInput';
 import { uploadIdentityPhoto, validateImageFile } from './utils/uploadPhoto';
-
-const formatDateInput = (value: string, previousValue: string): string => {
-  const digits = value.replace(/\D/g, '');
-  const limitedDigits = digits.slice(0, 8);
-  const isDeleting = value.length < previousValue.length;
-
-  if (limitedDigits.length >= 4) {
-    const formatted = `${limitedDigits.slice(0, 2)}/${limitedDigits.slice(2, 4)}/${limitedDigits.slice(4)}`;
-    return formatted;
-  }
-  if (limitedDigits.length >= 2 && !isDeleting) {
-    const formatted = `${limitedDigits.slice(0, 2)}/${limitedDigits.slice(2)}`;
-    return formatted;
-  }
-  return limitedDigits;
-};
 
 const formSchema = z.object({
   firstname: z
@@ -83,145 +71,6 @@ const formSchema = z.object({
 });
 
 type FormData = z.infer<typeof formSchema>;
-
-// Modal close button component
-interface ModalCloseButtonProps {
-  onClose: () => void;
-}
-
-const ModalCloseButton: React.FC<ModalCloseButtonProps> = ({ onClose }) => (
-  <button
-    type="button"
-    onClick={onClose}
-    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-    aria-label="Fermer"
-  >
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      xmlns="http://www.w3.org/2000/svg"
-      role="img"
-    >
-      <title>Fermer</title>
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  </button>
-);
-
-// Modal content component
-interface ModalContentProps {
-  onClose: () => void;
-  type: 'underage' | 'form-error' | 'success';
-  formErrors?: string[];
-  wasReturningMember?: boolean;
-}
-
-const ModalContent: React.FC<ModalContentProps> = ({
-  onClose,
-  type,
-  formErrors,
-  wasReturningMember,
-}) => {
-  if (type === 'success') {
-    return (
-      <>
-        <h3 className="text-lg font-semibold text-green-700 dark:text-green-400 w-full text-left">
-          {wasReturningMember ? 'Réinscription réussie' : 'Inscription réussie'}
-        </h3>
-        <p className="text-gray-700 dark:text-gray-300 w-full text-left">
-          Votre demande a été enregistrée avec succès.
-        </p>
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
-        >
-          Fermer
-        </button>
-      </>
-    );
-  }
-
-  if (type === 'form-error') {
-    return (
-      <>
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 w-full text-left">
-          Erreurs du formulaire
-        </h3>
-        <ul className="text-left text-gray-700 dark:text-gray-300 space-y-1 w-full list-disc list-inside">
-          {formErrors?.map((error) => (
-            <li key={error}>{error}</li>
-          ))}
-        </ul>
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
-        >
-          Fermer
-        </button>
-      </>
-    );
-  }
-
-  // Underage content (default)
-  return (
-    <>
-      <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 w-full text-left">
-        Inscription en personne requise
-      </h3>
-      <p className="text-gray-700 dark:text-gray-300 w-full text-left">
-        L'inscription en ligne est réservée aux adultes (16 ans et plus).
-      </p>
-      <p className="text-gray-700 dark:text-gray-300 w-full text-left">
-        Pour inscrire un enfant ou un adolescent, veuillez vous présenter directement à l'accueil du
-        club.
-      </p>
-      <button
-        type="button"
-        onClick={onClose}
-        className="mt-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md transition-colors"
-      >
-        Fermer
-      </button>
-    </>
-  );
-};
-
-// Info modal component (underage, form errors, or success)
-interface InfoModalProps {
-  show: boolean;
-  onClose: () => void;
-  type: 'underage' | 'form-error' | 'success';
-  formErrors?: string[];
-  wasReturningMember?: boolean;
-}
-
-const InfoModal: React.FC<InfoModalProps> = ({
-  show,
-  onClose,
-  type,
-  formErrors,
-  wasReturningMember,
-}) => {
-  if (!show) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 relative flex flex-col gap-4">
-        <ModalCloseButton onClose={onClose} />
-        <ModalContent
-          onClose={onClose}
-          type={type}
-          formErrors={formErrors}
-          wasReturningMember={wasReturningMember}
-        />
-      </div>
-    </div>
-  );
-};
 
 export default function InscriptionForm() {
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
@@ -308,6 +157,27 @@ export default function InscriptionForm() {
     currentSubscription,
   });
 
+  // Refs for form fields (used for focus on validation errors)
+  const firstnameRef = useRef<HTMLInputElement | null>(null);
+  const lastnameRef = useRef<HTMLInputElement | null>(null);
+  const birthdayRef = useRef<HTMLInputElement | null>(null);
+  const genreRef = useRef<HTMLSelectElement | null>(null);
+  const phoneRef = useRef<HTMLInputElement | null>(null);
+  const urgencyPhoneRef = useRef<HTMLInputElement | null>(null);
+  const emailRef = useRef<HTMLInputElement | null>(null);
+  const identityPhotoRef = useRef<HTMLInputElement | null>(null);
+
+  const fieldRefMap = useRef({
+    firstname: firstnameRef,
+    lastname: lastnameRef,
+    birthday: birthdayRef,
+    genre: genreRef,
+    phone: phoneRef,
+    urgencyPhone: urgencyPhoneRef,
+    email: emailRef,
+    identityPhoto: identityPhotoRef,
+  });
+
   useEffect(() => {
     const fetchData = async () => {
       await supabase.auth.signOut();
@@ -348,16 +218,14 @@ export default function InscriptionForm() {
   }, [closeModal, setShowFormErrorModal, setFormErrorMessages, setShowSuccessModal]);
 
   // Focus and scroll to first error field
-  const focusFirstErrorField = useCallback((errors: z.ZodIssue[]) => {
-    if (errors.length > 0) {
-      const firstFieldName = errors[0].path[0] as string;
-      const inputElement = document.querySelector(
-        `input[id="${firstFieldName}"], select[id="${firstFieldName}"], input[name="${firstFieldName}"]`
-      ) as HTMLInputElement | HTMLSelectElement | null;
-
+  const focusFirstErrorField = useCallback((fieldNames: string[]) => {
+    for (const fieldName of fieldNames) {
+      const ref = fieldRefMap.current[fieldName as keyof typeof fieldRefMap.current];
+      const inputElement = ref?.current;
       if (inputElement) {
         inputElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         setTimeout(() => inputElement.focus(), 300); // Wait for scroll to finish
+        break;
       }
     }
   }, []);
@@ -377,11 +245,6 @@ export default function InscriptionForm() {
 
         const validated = formSchema.parse(value);
         const birthDateISO = convertToISODate(validated.birthday);
-
-        const genderMap: Record<'homme' | 'femme', 'male' | 'female'> = {
-          homme: 'male',
-          femme: 'female',
-        };
 
         const memberData = {
           first_name: validated.firstname,
@@ -463,61 +326,49 @@ export default function InscriptionForm() {
       await handleFormSubmission(value);
       form.reset();
     },
+    onSubmitInvalid: ({ formApi }) => {
+      const allErrors = formApi.getAllErrors();
+      const fieldNames: (keyof FormData)[] = [
+        'firstname',
+        'lastname',
+        'birthday',
+        'genre',
+        'phone',
+        'urgencyPhone',
+        'email',
+        'identityPhoto',
+      ];
+
+      const fieldErrorMessages: string[] = [];
+      const fieldNamesWithErrors: string[] = [];
+
+      for (const fieldName of fieldNames) {
+        const fieldError = allErrors.fields[fieldName];
+        if (fieldError && fieldError.errors.length > 0) {
+          fieldNamesWithErrors.push(fieldName);
+          for (const error of fieldError.errors) {
+            if (typeof error === 'string') {
+              fieldErrorMessages.push(error);
+            }
+          }
+        }
+      }
+
+      if (fieldErrorMessages.length > 0) {
+        setFormErrorMessages(fieldErrorMessages);
+        setShowFormErrorModal(true);
+        focusFirstErrorField(fieldNamesWithErrors);
+      }
+    },
   });
 
   const handleFormSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      form.handleSubmit();
-
-      // Check for validation errors after submit attempt
-      setTimeout(() => {
-        const errors: string[] = [];
-        const fieldNames: (keyof FormData)[] = [
-          'firstname',
-          'lastname',
-          'birthday',
-          'genre',
-          'phone',
-          'urgencyPhone',
-          'email',
-          'identityPhoto',
-        ];
-
-        // Collect all field errors
-        fieldNames.forEach((fieldName) => {
-          const fieldState = form.getFieldMeta(fieldName);
-          if (fieldState?.errors && fieldState.errors.length > 0) {
-            errors.push(...fieldState.errors);
-          }
-        });
-
-        // Show modal if there are errors
-        if (errors.length > 0) {
-          setFormErrorMessages(errors);
-          setShowFormErrorModal(true);
-
-          // Focus first error field
-          const firstErrorField = fieldNames.find((fieldName) => {
-            const fieldState = form.getFieldMeta(fieldName);
-            return fieldState?.errors && fieldState.errors.length > 0;
-          });
-
-          if (firstErrorField) {
-            const inputElement = document.querySelector(
-              `input[id="${firstErrorField}"], select[id="${firstErrorField}"], input[name="${firstErrorField}"]`
-            ) as HTMLInputElement | HTMLSelectElement | null;
-
-            if (inputElement) {
-              inputElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              setTimeout(() => inputElement.focus(), 300);
-            }
-          }
-        }
-      }, 100);
+      void form.handleSubmit();
     },
-    [form, setFormErrorMessages, setShowFormErrorModal]
+    [form]
   );
 
   // Handle modal close with birthday reset for underage modal
@@ -577,16 +428,11 @@ export default function InscriptionForm() {
           setExistingMemberData(result.memberData);
 
           // Pre-fill form fields
-          const genderMap: Record<'male' | 'female', 'homme' | 'femme'> = {
-            male: 'homme',
-            female: 'femme',
-          };
-
           form.setFieldValue('firstname', result.memberData.first_name);
           form.setFieldValue('lastname', result.memberData.last_name);
           form.setFieldValue('phone', result.memberData.phone);
           form.setFieldValue('urgencyPhone', result.memberData.emergency_phone);
-          const mappedGender = genderMap[result.memberData.gender as 'male' | 'female'];
+          const mappedGender = reverseGenderMap[result.memberData.gender as 'male' | 'female'];
           if (mappedGender) {
             form.setFieldValue('genre', mappedGender);
           }
@@ -662,21 +508,6 @@ export default function InscriptionForm() {
     [setBuilderTemporality]
   );
 
-  const temporalityLabels: Record<string, string> = {
-    season: 'Saison',
-    yearly: 'Année',
-    semester1: 'Semestre',
-    quarter: 'Trimestre',
-    month: 'Mois',
-  };
-
-  const audienceLabels: Record<string, string> = {
-    adult: 'Adulte',
-    reduced: 'Tarif réduit',
-    teen: 'Ado',
-    child: 'Enfant',
-  };
-
   // Disabled field styling for returning members
   const disabledFieldClass = isReturningMember
     ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60'
@@ -731,6 +562,7 @@ export default function InscriptionForm() {
                 </label>
                 <input
                   id="firstname"
+                  ref={firstnameRef}
                   type="text"
                   value={field.state.value}
                   onBlur={field.handleBlur}
@@ -769,6 +601,7 @@ export default function InscriptionForm() {
                 </label>
                 <input
                   id="lastname"
+                  ref={lastnameRef}
                   type="text"
                   value={field.state.value}
                   onBlur={field.handleBlur}
@@ -807,6 +640,7 @@ export default function InscriptionForm() {
                 </label>
                 <input
                   id="birthday"
+                  ref={birthdayRef}
                   type="text"
                   placeholder="JJ/MM/AAAA"
                   value={field.state.value}
@@ -846,6 +680,7 @@ export default function InscriptionForm() {
                 </label>
                 <select
                   id="genre"
+                  ref={genreRef}
                   value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={createSelectChangeHandler(field.handleChange)}
@@ -887,6 +722,7 @@ export default function InscriptionForm() {
                 </label>
                 <input
                   id="phone"
+                  ref={phoneRef}
                   type="tel"
                   placeholder="0612345678"
                   value={field.state.value}
@@ -925,6 +761,7 @@ export default function InscriptionForm() {
                 </label>
                 <input
                   id="urgencyPhone"
+                  ref={urgencyPhoneRef}
                   type="tel"
                   placeholder="0612345678"
                   value={field.state.value}
@@ -963,6 +800,7 @@ export default function InscriptionForm() {
                 </label>
                 <input
                   id="email"
+                  ref={emailRef}
                   type="email"
                   placeholder="exemple@email.com"
                   value={field.state.value}
@@ -1005,6 +843,7 @@ export default function InscriptionForm() {
                 </label>
                 <input
                   id="identityPhoto"
+                  ref={identityPhotoRef}
                   type="file"
                   accept="image/jpeg,image/png"
                   required
