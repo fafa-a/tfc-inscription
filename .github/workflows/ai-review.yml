@@ -1,0 +1,37 @@
+name: AI Review (GitHub Models)
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  contents: read
+  models: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install gh-models extension
+        run: gh extension install https://github.com/github/gh-models
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Get PR diff
+        run: gh pr diff ${{ github.event.pull_request.number }} --patch > pr.patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Run review prompt
+        run: cat pr.patch | gh models run --file review.prompt.yml > review.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Comment on PR
+        run: |
+          BODY="$(cat review.txt)"
+          gh pr comment ${{ github.event.pull_request.number }} --body "$BODY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
