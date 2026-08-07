@@ -366,7 +366,7 @@ export default function InscriptionForm() {
     (e: React.FormEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      void form.handleSubmit();
+      form.handleSubmit().catch(() => undefined);
     },
     [form]
   );
@@ -449,7 +449,7 @@ export default function InscriptionForm() {
           setIsReturningMember(false);
           setExistingMemberData(null);
         }
-      } catch (error) {
+      } catch {
         // Silently fail - don't block form submission
         setIsReturningMember(false);
         setExistingMemberData(null);
@@ -472,22 +472,20 @@ export default function InscriptionForm() {
     (handleChange: (value: File | undefined) => void) =>
       (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+
+        // Revoke previous preview URL to prevent memory leak
+        if (photoPreviewRef.current) {
+          URL.revokeObjectURL(photoPreviewRef.current);
+          photoPreviewRef.current = null;
+        }
+
+        handleChange(file);
+
         if (file) {
-          // Revoke previous preview URL to prevent memory leak
-          if (photoPreviewRef.current) {
-            URL.revokeObjectURL(photoPreviewRef.current);
-          }
-          handleChange(file);
           const previewUrl = URL.createObjectURL(file);
           photoPreviewRef.current = previewUrl;
           setPhotoPreview(previewUrl);
         } else {
-          // Cleanup when file is removed
-          if (photoPreviewRef.current) {
-            URL.revokeObjectURL(photoPreviewRef.current);
-            photoPreviewRef.current = null;
-          }
-          handleChange(undefined);
           setPhotoPreview(null);
         }
       },

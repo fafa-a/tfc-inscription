@@ -60,7 +60,7 @@ export const ModalContent: React.FC<ModalContentProps> = ({
         Inscription en personne requise
       </h3>
       <p className="text-gray-700 dark:text-gray-300 w-full text-left">
-        L'inscription en ligne est réservée aux adultes (16 ans et plus).
+        L&apos;inscription en ligne est réservée aux adultes (16 ans et plus).
       </p>
       <p className="text-gray-700 dark:text-gray-300 w-full text-left">
         Pour inscrire un enfant ou un adolescent, veuillez vous présenter directement à l'accueil du

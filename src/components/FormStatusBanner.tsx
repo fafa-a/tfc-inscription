@@ -43,7 +43,7 @@ export function FormStatusBanner({
         <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <p className="text-blue-800 dark:text-blue-200 font-medium">
             i Ancien membre détecté - Veuillez vérifier vos informations et télécharger une nouvelle
-            photo d'identité pour votre réinscription
+            photo d&apos;identité pour votre réinscription
           </p>
         </div>
       )}

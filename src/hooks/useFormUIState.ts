@@ -59,7 +59,7 @@ export function useFormUIState({
     [isReturningMember, submitSuccess]
   );
 
-  const showTemporalitySelector = useMemo(() => !!builderDiscipline, [builderDiscipline]);
+  const showTemporalitySelector = useMemo(() => Boolean(builderDiscipline), [builderDiscipline]);
 
   return {
     // States
