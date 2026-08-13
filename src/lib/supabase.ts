@@ -36,8 +36,9 @@ export interface MemberInsert {
   emergency_phone: string;
   email: string;
   discipline_id?: string | null;
-  stripe_customer_id: string;
+  helloasso_checkout_intent_id?: string | null;
   is_active: boolean;
+  is_profile_validated: boolean;
   identity_photo_path?: string;
   notes?: string;
 }
@@ -52,8 +53,9 @@ export interface Member {
   emergency_phone: string;
   email: string;
   discipline_id: string;
-  stripe_customer_id: string;
+  helloasso_checkout_intent_id: string | null;
   is_active: boolean;
+  is_profile_validated: boolean;
   identity_photo_path?: string;
   notes?: string;
   created_at: string;
@@ -64,7 +66,7 @@ export interface SubscriptionInsert {
   plan_id: string;
   price: number;
   payment_status: 'pending' | 'paid' | 'failed' | 'refunded';
-  payment_method: 'card';
+  payment_method: 'card' | 'helloasso';
   start_date: string;
   end_date: string;
   notes?: string;
@@ -106,13 +108,6 @@ export function calculateEndDate(startDate: string, type: string): string {
 }
 
 /**
- * Generates a temporary Stripe customer ID
- */
-export function generateTempStripeId(): string {
-  return `fake_${crypto.randomUUID()}`;
-}
-
-/**
  * Checks if a member exists by email and returns their data
  */
 export async function checkMemberByEmail(email: string) {
@@ -141,7 +136,7 @@ export async function checkMemberByEmail(email: string) {
 export async function insertMemberWithSubscriptions(
   memberData: Omit<
     MemberInsert,
-    'stripe_customer_id' | 'is_active' | 'identity_photo_path' | 'discipline_id'
+    'helloasso_checkout_intent_id' | 'is_active' | 'is_profile_validated' | 'identity_photo_path' | 'discipline_id'
   >,
   planIds: string[],
   identityPhotoPath: string
@@ -176,6 +171,7 @@ export async function insertMemberWithSubscriptions(
           emergency_phone: memberData.emergency_phone,
           identity_photo_path: identityPhotoPath,
           notes: memberData.notes,
+          is_profile_validated: false,
         })
         .eq('id', memberId);
 
@@ -190,8 +186,8 @@ export async function insertMemberWithSubscriptions(
         id: memberId,
         ...memberData,
         discipline_id: null,
-        stripe_customer_id: generateTempStripeId(),
         is_active: true,
+        is_profile_validated: false,
         identity_photo_path: identityPhotoPath,
       });
 
@@ -222,7 +218,7 @@ export async function insertMemberWithSubscriptions(
       plan_id: plan.id,
       price: plan.price,
       payment_status: 'pending',
-      payment_method: 'card',
+      payment_method: 'helloasso',
       start_date: startDate,
       end_date: calculateEndDate(startDate, plan.duration),
       notes: 'Abonnement créé depuis formulaire web',

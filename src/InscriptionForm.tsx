@@ -2,6 +2,7 @@ import { useForm } from '@tanstack/react-form';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import { FormStatusBanner } from './components/FormStatusBanner';
+import { HelloAssoWidget } from './components/HelloAssoWidget';
 import { InfoModal } from './components/InfoModal';
 import { SubscriptionBuilderSection } from './components/SubscriptionBuilderSection';
 import { SubscriptionSummary } from './components/SubscriptionSummary';
@@ -10,6 +11,7 @@ import { genderMap, reverseGenderMap } from './constants/mappings';
 import { useFormUIState } from './hooks/useFormUIState';
 import { useSubscriptionBuilder } from './hooks/useSubscriptionBuilder';
 import { useUnderagePolicy } from './hooks/useUnderagePolicy';
+import { createHelloAssoCheckoutIntent } from './lib/helloasso';
 import {
   type Discipline,
   type SubscriptionPlan,
@@ -89,6 +91,11 @@ export default function InscriptionForm() {
     emergency_phone: string;
   } | null>(null);
   const [wasReturningMember, setWasReturningMember] = useState(false);
+
+  // Payment state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [currentMemberId, setCurrentMemberId] = useState<string | null>(null);
 
   // Adults-only policy state (using hook)
   const { isUnderageUser, showUnderageModal, checkAge, closeModal } = useUnderagePolicy();
@@ -274,9 +281,39 @@ export default function InscriptionForm() {
           throw new Error(result.error || "Erreur lors de l'inscription");
         }
 
-        setSubmitSuccess(true);
+        const newMemberId = result.memberId;
+
+        // Create HelloAsso checkout intent
+        const discipline = disciplines.find((d) => d.id === selectedPlan.discipline_id);
+        const itemName = discipline
+          ? `${temporalityLabels[selectedPlan.duration]} ${discipline.name}`
+          : `Abonnement TFC`;
+
+        const checkoutIntent = await createHelloAssoCheckoutIntent({
+          totalAmount: selectedPlan.price * 100,
+          initialAmount: selectedPlan.price * 100,
+          itemName,
+          backUrl: window.location.origin,
+          errorUrl: window.location.origin,
+          returnUrl: window.location.origin,
+          containsDonation: false,
+          payer: {
+            firstName: validated.firstname,
+            lastName: validated.lastname,
+            email: validated.email,
+          },
+        });
+
+        // Update member with checkout intent ID
+        await supabase
+          .from('members')
+          .update({ helloasso_checkout_intent_id: String(checkoutIntent.id) })
+          .eq('id', newMemberId);
+
+        setCurrentMemberId(newMemberId);
+        setCheckoutUrl(checkoutIntent.redirectUrl);
+        setShowPaymentModal(true);
         setWasReturningMember(isReturningMember);
-        setShowSuccessModal(true); // Show success modal
         setCurrentBirthday('');
         resetBuilder();
         setPhotoPreview(null);
@@ -303,13 +340,37 @@ export default function InscriptionForm() {
       focusFirstErrorField,
       setIsSubmitting,
       setSubmitError,
-      setSubmitSuccess,
-      setShowSuccessModal,
       setPhotoPreview,
       setFormErrorMessages,
       setShowFormErrorModal,
+      disciplines,
     ]
   );
+
+  const handlePaymentSuccess = useCallback(async () => {
+    if (currentMemberId) {
+      await supabase
+        .from('subscriptions')
+        .update({ payment_status: 'paid' })
+        .eq('member_id', currentMemberId);
+    }
+    setShowPaymentModal(false);
+    setSubmitSuccess(true);
+    setShowSuccessModal(true);
+  }, [currentMemberId, setSubmitSuccess, setShowSuccessModal]);
+
+  const handlePaymentError = useCallback(
+    (message: string) => {
+      setSubmitError(message);
+      setShowPaymentModal(false);
+    },
+    [setSubmitError]
+  );
+
+  const handlePaymentClose = useCallback(() => {
+    setShowPaymentModal(false);
+    setSubmitError("Le paiement n'a pas été finalisé.");
+  }, [setSubmitError]);
 
   const form = useForm({
     defaultValues: {
@@ -523,6 +584,27 @@ export default function InscriptionForm() {
         formErrors={formErrorMessages}
         wasReturningMember={wasReturningMember}
       />
+
+      {/* Payment modal */}
+      {showPaymentModal && checkoutUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl mx-4 p-2 relative">
+            <button
+              type="button"
+              onClick={() => setShowPaymentModal(false)}
+              className="absolute top-2 right-2 z-10 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xl leading-none px-2 py-1"
+            >
+              &times;
+            </button>
+            <HelloAssoWidget
+              checkoutUrl={checkoutUrl}
+              onSuccess={handlePaymentSuccess}
+              onError={handlePaymentError}
+              onClose={handlePaymentClose}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="w-full max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
         <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
