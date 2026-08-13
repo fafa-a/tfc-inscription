@@ -119,4 +119,74 @@
 
 - Dépend de l'infrastructure Supabase (Edge Functions)
 - HelloAsso envoie des webhooks sur les événements de paiement (Order, Payment)
-- Endpoint à configurer dans le dashboard HelloAsso
+- Endpoint à configurer via `PUT /partners/me/api-notifications/organizations/{organizationSlug}`
+
+---
+
+## Issue 6: Corriger les bugs HelloAsso détectés via le MCP
+
+**Type:** Bugfix
+**Taille:** S
+
+### Contexte
+
+Vérification de l'API HelloAsso via MCP (specs réelles). 3 bugs confirmés.
+
+### Acceptance criteria
+
+- [ ] **Bug 1 — URL OAuth2** : `src/lib/helloasso.ts` utilise une URL séparée pour le token
+  - Corriger : `https://api.helloasso.com/oauth2/token` (PAS `https://api.helloasso.com/v5/oauth2/token`)
+  - Actuellement `HELLOASSO_API = 'https://api.helloasso.com/v5'` et `${HELLOASSO_API}/oauth2/token` → faux
+  - Ajouter `const HELLOASSO_OAUTH_API = 'https://api.helloasso.com/oauth2'`
+- [ ] **Bug 2 — `expires_in`** : l'API renvoie `expires_in` en `string`. Parser avant calcul :
+  - `const expiresIn = Number(data.expires_in)`
+  - `tokenExpiry = Date.now() + (expiresIn - 60) * 1000`
+- [ ] **Bug 3 — Signature webhook** : le `signatureKey` provient de la réponse de `PUT /partners/me/api-notifications/...` (champ `signatureKey`), pas d'un secret arbitraire. Documenter dans `supabase/functions/helloasso-webhook/index.ts` que `HELLOASSO_WEBHOOK_SECRET` = ce `signatureKey`
+- [ ] `bun run lint` passe
+
+### Fichiers
+
+- `src/lib/helloasso.ts` (modifié)
+- `supabase/functions/helloasso-webhook/index.ts` (commentaire/doc uniquement)
+
+### Notes
+
+- Sources (MCP HelloAsso) :
+  - Spec `api-authentication-access-token` : `tokenUrl = https://api.helloasso.com/oauth2/token`
+  - Spec `HelloAsso API` → `InitCheckoutResponse` : `id` (int), `redirectUrl` (string)
+  - `PUT /partners/me/api-notifications/organizations/{slug}` → réponse `ApiUrlNotificationModel` avec `signatureKey`
+
+---
+
+## Issue 7: Sécuriser l'OAuth2 (sortir le `client_secret` du frontend)
+
+**Type:** Refactor (sécurité)
+**Taille:** M
+
+### Contexte
+
+`src/lib/helloasso.ts` fait l'OAuth2 `client_credentials` **dans le navigateur**. `VITE_HELLOASSO_CLIENT_SECRET` est donc exposé dans le bundle JS. Le flux `client_credentials` est conçu pour être exécuté côté serveur.
+
+### Acceptance criteria
+
+- [ ] Créer une Edge Function Supabase `helloasso-checkout` qui :
+  - Obtient le token OAuth2 (client_id + client_secret côté serveur)
+  - Crée le checkout intent
+  - Retourne `{ id, redirectUrl }` au frontend
+- [ ] `src/lib/helloasso.ts` n'utilise plus `VITE_HELLOASSO_CLIENT_SECRET`
+- [ ] Le frontend appelle la fonction via `supabase.functions.invoke('helloasso-checkout', ...)`
+- [ ] `VITE_HELLOASSO_CLIENT_SECRET` retiré de `.env.example` (remplacé par secret Edge Function)
+- [ ] `.agents/user-side-setup.md` mis à jour (le secret devient un secret Supabase, pas une var VITE_)
+- [ ] `bun run lint` passe
+
+### Fichiers
+
+- `supabase/functions/helloasso-checkout/index.ts` (nouveau)
+- `src/lib/helloasso.ts` (modifié)
+- `src/InscriptionForm.tsx` (modifié : appel via `functions.invoke`)
+- `.env.example` (modifié)
+
+### Notes
+
+- `client_id` peut rester public ; seul `client_secret` doit être côté serveur
+- La migration de `VITE_HELLOASSO_CLIENT_SECRET` → secret Edge Function `HELLOASSO_CLIENT_SECRET` se fait côté user (Supabase CLI)

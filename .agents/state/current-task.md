@@ -1,12 +1,9 @@
 # Current Task
 
-**Active plan:** `refactor-inscription-form`
-**Active issue:** Issue 5 — Remplacer `document.querySelector` par des refs React
-**Status:** DONE
-**Last completed step:** Remplacement de `document.querySelector` par des refs React, suppression du `setTimeout(100ms)` de validation au profit de `onSubmitInvalid` de TanStack Form
-**Last command:** `bun run lint` (warning préexistante)
-**Next step:** Plan terminé — aucune issue restante
-**Active issue status:** completed
+**Active plan:** `helloasso-payment`
+**Active issue:** Issue 6 — Corriger les bugs HelloAsso détectés via le MCP
+**Status:** ready
+**Next step:** Corriger les 3 bugs dans `src/lib/helloasso.ts` (URL OAuth2, `expires_in`, doc signatureKey)
 **Do not do:**
-- Ne pas extraire d'autres composants (hors scope du plan)
 - Ne pas ajouter de dépendances
+- Ne pas modifier le flux de soumission (`InscriptionForm.tsx`)
