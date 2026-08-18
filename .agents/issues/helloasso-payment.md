@@ -169,15 +169,15 @@ Vérification de l'API HelloAsso via MCP (specs réelles). 3 bugs confirmés.
 
 ### Acceptance criteria
 
-- [ ] Créer une Edge Function Supabase `helloasso-checkout` qui :
+- [x] Créer une Edge Function Supabase `helloasso-checkout` qui :
   - Obtient le token OAuth2 (client_id + client_secret côté serveur)
   - Crée le checkout intent
   - Retourne `{ id, redirectUrl }` au frontend
-- [ ] `src/lib/helloasso.ts` n'utilise plus `VITE_HELLOASSO_CLIENT_SECRET`
-- [ ] Le frontend appelle la fonction via `supabase.functions.invoke('helloasso-checkout', ...)`
-- [ ] `VITE_HELLOASSO_CLIENT_SECRET` retiré de `.env.example` (remplacé par secret Edge Function)
-- [ ] `.agents/user-side-setup.md` mis à jour (le secret devient un secret Supabase, pas une var VITE_)
-- [ ] `bun run lint` passe
+- [x] `src/lib/helloasso.ts` n'utilise plus `VITE_HELLOASSO_CLIENT_SECRET`
+- [x] Le frontend appelle la fonction via `supabase.functions.invoke('helloasso-checkout', ...)`
+- [x] `VITE_HELLOASSO_CLIENT_SECRET` retiré de `.env.example` (remplacé par secret Edge Function)
+- [x] `.agents/user-side-setup.md` mis à jour (le secret devient un secret Supabase, pas une var VITE_)
+- [x] `bun run lint` passe (sur les fichiers modifiés ; 4 erreurs pré-existantes hors périmètre dans `HelloAssoWidget.tsx`, `supabase.ts`, `InscriptionForm.tsx`)
 
 ### Fichiers
 
@@ -190,3 +190,88 @@ Vérification de l'API HelloAsso via MCP (specs réelles). 3 bugs confirmés.
 
 - `client_id` peut rester public ; seul `client_secret` doit être côté serveur
 - La migration de `VITE_HELLOASSO_CLIENT_SECRET` → secret Edge Function `HELLOASSO_CLIENT_SECRET` se fait côté user (Supabase CLI)
+
+---
+
+## Issue 8: Ne pas faire confiance au client (montant serveur + contrôle d'accès)
+
+**Type:** Refactor (sécurité)
+**Taille:** M
+
+### Contexte
+
+Remonté par l'agent review :
+1. `helloasso-checkout` relaye le payload frontend tel quel (`totalAmount`, `itemName`…). Un client modifié peut créer un checkout intent avec un **montant arbitraire**.
+2. Pas d'authentification sur l'Edge Function : n'importe qui avec la **anon key** peut l'appeler.
+
+### Acceptance criteria
+
+**Montant calculé côté serveur (ne pas faire confiance au client) :**
+- [ ] L'Edge Function `helloasso-checkout` ne reçoit **plus** `totalAmount`/`initialAmount`/`itemName` du client
+- [ ] Elle reçoit uniquement `planId` (et `memberId` pour stocker le checkout intent)
+- [ ] Elle lit le **prix et la durée depuis la table `subscription_plans`** (côté serveur)
+- [ ] Elle construit `itemName` et les montants en cents à partir de la donnée DB
+- [ ] Elle vérifie que le plan existe et est `active` → sinon erreur 400
+
+**Contrôle d'accès (Option C — décidée) :**
+- [ ] Frontend : `supabase.auth.signInAnonymously()` au chargement → JWT anon
+- [ ] Edge Function : vérifier le JWT via `supabase.auth.getUser(token)` (contexte `Authorization: Bearer`)
+- [ ] Rejet 401 si le token est absent/invalide
+- [ ] Rate-limit par `sub` (user anon) **+ IP** : max 5 checkouts / 10 min (stockage simple : table `checkout_rate_limits` ou cache mémoire)
+
+**Côté frontend :**
+- [ ] `src/InscriptionForm.tsx` envoie `planId`/`memberId` au lieu des montants
+- [ ] `bun run lint` passe (sur les fichiers modifiés)
+
+### Fichiers
+
+- `supabase/functions/helloasso-checkout/index.ts` (modifié)
+- `src/InscriptionForm.tsx` (modifié)
+- `src/lib/helloasso.ts` (modifié si nécessaire)
+- `src/lib/supabase.ts` (modifié si nécessaire : init anon auth)
+
+### Notes
+
+- La source de vérité du prix est la table `subscription_plans`, pas le navigateur
+- Décision : Option C = anon auth (JWT) + rate-limit par `sub`+IP
+- Le JWT anon est obtenu avec l'anon key publique → il prouve l'usage du SDK mais n'est pas une preuve d'identité ; le vrai verrou = montant calculé côté serveur
+- Le rate-limit protège contre le spam/création massive de checkouts
+
+---
+
+## Issue 9: Rendre les URLs HelloAsso configurables (sandbox vs production)
+
+**Type:** Feature
+**Taille:** S
+
+### Contexte
+
+Le sandbox HelloAsso utilise des URLs différentes de la production :
+- Prod API : `https://api.helloasso.com`
+- Sandbox API : `https://api.helloasso-sandbox.com`
+- Prod widget/iframe : `https://www.helloasso.com`
+- Sandbox widget/iframe : `https://www.helloasso-sandbox.com`
+
+Actuellement `helloasso.ts` et l'Edge Function `helloasso-checkout` hardcodent les URLs de prod.
+
+### Acceptance criteria
+
+- [ ] `src/lib/helloasso.ts` : base URL pilotée par env (`VITE_HELLOASSO_API_URL` ou flag `VITE_HELLOASSO_ENV=sandbox|production`)
+- [ ] Edge Function `helloasso-checkout` : base URL pilotée par secret Supabase (`HELLOASSO_API_URL` ou `HELLOASSO_ENV`)
+- [ ] `src/components/HelloAssoWidget.tsx` : l'iframe accepte l'origine sandbox OU prod (déjà partiellement géré — vérifier)
+- [ ] `.env.example` documente la var (ex: `VITE_HELLOASSO_ENV=sandbox`)
+- [ ] `bun run lint` passe (fichiers modifiés)
+
+### Fichiers
+
+- `src/lib/helloasso.ts` (modifié)
+- `supabase/functions/helloasso-checkout/index.ts` (modifié)
+- `src/components/HelloAssoWidget.tsx` (vérifier)
+- `.env.example` (modifié)
+
+### Notes
+
+- Sources (doc HelloAsso) :
+  - API sandbox : `https://api.helloasso-sandbox.com/oauth2`
+  - Création asso de test : `https://auth.helloasso-sandbox.com/inscription`
+  - Site sandbox : `https://www.helloasso-sandbox.com`

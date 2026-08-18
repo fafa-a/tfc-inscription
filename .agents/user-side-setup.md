@@ -4,31 +4,40 @@ Tâches à faire de ton côté (compte, DB, déploiement). Aucune de ces étapes
 
 ---
 
-## 1. Compte HelloAsso
+## 1. Compte HelloAsso (Sandbox pour les tests)
 
-- [ ] Créer un compte sur https://www.helloasso.com
-- [ ] Créer (ou rejoindre) une **organisation** (le club)
-- [ ] Aller sur le portail développeur : https://developer.helloasso.com (ou `Mon organisation` → `Développeurs`)
-- [ ] Créer une **application API** → récupérer :
-  - `client_id`
-  - `client_secret`
-- [ ] **Accorder l'autorisation `Checkout`** à l'application API (obligatoire pour créer des checkout intents, sinon 403)
-- [ ] Pour le webhook : accorder `AccessPublicData` + rôle `OrganizationAdmin` au token
-- [ ] Noter le **slug** de l'organisation (visible dans l'URL du dashboard, ex: `tfc-club`)
+> ⚠️ **Sandbox ≠ Production.** Le sandbox est un environnement séparé avec ses propres URLs et son propre compte.
 
-> ⚠️ Le secret n'est utilisé QUE si l'on déplace l'OAuth2 vers une Edge Function. Tant que le code tourne côté navigateur, il sera exposé (à corriger — voir vulnérabilité signalée).
+### 1a. Environnement Sandbox (test)
+
+- [ ] Créer l'association fictive sur **`https://auth.helloasso-sandbox.com/inscription`** (PAS le site de prod)
+- [ ] **Valider le compte sandbox avec des documents FICTIFS** (obligatoire pour recevoir un premier paiement en sandbox — c'est ce qui bloque la demande depuis 5 jours)
+- [ ] Récupérer `client_id` / `client_secret` de l'app API sandbox
+- [ ] Accorder l'autorisation **`Checkout`** à l'app
+- [ ] API sandbox : `https://api.helloasso-sandbox.com`
+
+### 1b. Environnement Production (quand l'asso réelle sera validée)
+
+- [ ] Créer l'app API sur https://www.helloasso.com
+- [ ] Récupérer `client_id` / `client_secret`
+- [ ] Accorder **`Checkout`** + (webhook) `AccessPublicData` + rôle `OrganizationAdmin`
+- [ ] Noter le `organization_slug`
+- [ ] API prod : `https://api.helloasso.com`
+
+> ⚠️ Le `client_secret` ne doit **jamais** être exposé côté navigateur. L'OAuth2 `client_credentials` et la création du checkout intent s'exécutent désormais dans l'Edge Function `helloasso-checkout`. Les secrets HelloAsso sont donc des secrets Supabase, pas des variables `VITE_*`.
 
 ---
 
 ## 2. Variables d'environnement `.env`
 
-Ajouter au fichier `.env` (copier depuis `.env.example`) :
+Le frontend n'a plus besoin d'aucune variable HelloAsso. Le `.env` ne contient que :
 
 ```env
-VITE_HELLOASSO_CLIENT_ID=xxx
-VITE_HELLOASSO_CLIENT_SECRET=xxx
-VITE_HELLOASSO_ORGANIZATION_SLUG=xxx
+VITE_SUPABASE_URL=xxx
+VITE_SUPABASE_ANON_KEY=xxx
 ```
+
+Les identifiants HelloAsso sont définis comme secrets de l'Edge Function (voir section 4).
 
 ---
 
@@ -62,9 +71,10 @@ alter table public.subscriptions
 
 ---
 
-## 4. Déployer l'Edge Function
+## 4. Déployer les Edge Functions
 
 ```bash
+supabase functions deploy helloasso-checkout
 supabase functions deploy helloasso-webhook
 ```
 
@@ -72,12 +82,16 @@ Puis définir les secrets :
 
 ```bash
 supabase secrets set \
-  HELLOASSO_WEBHOOK_SECRET=<cle_aleatoire_forte> \
+  HELLOASSO_CLIENT_ID=<client_id> \
+  HELLOASSO_CLIENT_SECRET=<client_secret> \
+  HELLOASSO_ORGANIZATION_SLUG=<organization_slug> \
+  HELLOASSO_WEBHOOK_SECRET=<signatureKey_du_webhook> \
   SUPABASE_URL=https://<projet>.supabase.co \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key>
 ```
 
 > La `service_role_key` se trouve dans `Project Settings → API`.
+> `HELLOASSO_WEBHOOK_SECRET` doit être le `signatureKey` renvoyé par la configuration du webhook (section 5), pas un secret arbitraire.
 
 ---
 
@@ -111,8 +125,8 @@ curl -X PUT \
 
 | Valeur | Où |
 |---|---|
-| `VITE_HELLOASSO_CLIENT_ID` | Portail développeur HelloAsso |
-| `VITE_HELLOASSO_CLIENT_SECRET` | Portail développeur HelloAsso |
-| `VITE_HELLOASSO_ORGANIZATION_SLUG` | URL du dashboard org |
-| `HELLOASSO_WEBHOOK_SECRET` | À générer (aléatoire fort) |
+| `HELLOASSO_CLIENT_ID` | Portail développeur HelloAsso (secret Edge Function) |
+| `HELLOASSO_CLIENT_SECRET` | Portail développeur HelloAsso (secret Edge Function) |
+| `HELLOASSO_ORGANIZATION_SLUG` | URL du dashboard org (secret Edge Function) |
+| `HELLOASSO_WEBHOOK_SECRET` | `signatureKey` renvoyé par l'API de config du webhook |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API |
