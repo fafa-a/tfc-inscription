@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 interface HelloAssoWidgetProps {
   checkoutUrl: string;
@@ -15,7 +15,10 @@ export const HelloAssoWidget: React.FC<HelloAssoWidgetProps> = ({
 }) => {
   const handleMessage = useCallback(
     (event: MessageEvent) => {
-      if (event.origin !== 'https://www.helloasso.com' && event.origin !== 'https://www.helloasso-sandbox.com') {
+      if (
+        event.origin !== 'https://www.helloasso.com' &&
+        event.origin !== 'https://www.helloasso-sandbox.com'
+      ) {
         return;
       }
 

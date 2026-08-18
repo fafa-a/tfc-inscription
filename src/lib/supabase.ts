@@ -136,7 +136,11 @@ export async function checkMemberByEmail(email: string) {
 export async function insertMemberWithSubscriptions(
   memberData: Omit<
     MemberInsert,
-    'helloasso_checkout_intent_id' | 'is_active' | 'is_profile_validated' | 'identity_photo_path' | 'discipline_id'
+    | 'helloasso_checkout_intent_id'
+    | 'is_active'
+    | 'is_profile_validated'
+    | 'identity_photo_path'
+    | 'discipline_id'
   >,
   planIds: string[],
   identityPhotoPath: string

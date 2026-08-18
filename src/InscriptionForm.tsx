@@ -13,15 +13,15 @@ import { useSubscriptionBuilder } from './hooks/useSubscriptionBuilder';
 import { useUnderagePolicy } from './hooks/useUnderagePolicy';
 import { createHelloAssoCheckoutIntent } from './lib/helloasso';
 import {
-  type Discipline,
-  type SubscriptionPlan,
   checkMemberByEmail,
   convertToISODate,
+  type Discipline,
   insertMemberWithSubscriptions,
+  type SubscriptionPlan,
   supabase,
 } from './lib/supabase';
-import { handleFormValidationError } from './utils/formErrorHandler';
 import { formatDateInput } from './utils/formatDateInput';
+import { handleFormValidationError } from './utils/formErrorHandler';
 import { uploadIdentityPhoto, validateImageFile } from './utils/uploadPhoto';
 
 const formSchema = z.object({
@@ -343,6 +343,7 @@ export default function InscriptionForm() {
       setPhotoPreview,
       setFormErrorMessages,
       setShowFormErrorModal,
+      setSubmitSuccess,
       disciplines,
     ]
   );
@@ -520,13 +521,13 @@ export default function InscriptionForm() {
   );
 
   // Cleanup photo preview URL on unmount
+  // biome-ignore lint/correctness/useExhaustiveDependencies: ref used only for cleanup on unmount
   useEffect(() => {
     return () => {
       if (photoPreviewRef.current) {
         URL.revokeObjectURL(photoPreviewRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePhotoChange = useCallback(

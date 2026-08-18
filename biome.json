@@ -1,12 +1,20 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
+  "$schema": "https://biomejs.dev/schemas/2.5.9/schema.json",
+  "plugins": [
+    "./node_modules/@felixarntz/biome/rules/no-as-unknown-as.grit",
+    "./node_modules/@felixarntz/biome/rules/no-empty-object-accumulator.grit",
+    "./node_modules/@felixarntz/biome/rules/no-has-own-property.grit",
+    "./node_modules/@felixarntz/biome/rules/no-in-operator.grit",
+    "./node_modules/@felixarntz/biome/rules/no-object-assign-target.grit",
+    "./node_modules/@felixarntz/biome/rules/no-object-from-entries.grit",
+    "./node_modules/@felixarntz/biome/rules/no-prototype-mutation.grit",
+    "./node_modules/@felixarntz/biome/rules/no-prototype-property-access.grit"
+  ],
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
         "useButtonType": "error",
         "useKeyWithClickEvents": "warn"
@@ -54,25 +62,36 @@
     }
   },
   "files": {
-    "ignore": [
-      "node_modules",
-      "dist",
-      "dist-node",
-      "build",
-      "coverage",
-      ".git",
-      "*.min.js",
-      "*.d.ts",
-      "*.js"
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/dist-node",
+      "!**/build",
+      "!**/coverage",
+      "!**/.git",
+      "!**/*.min.js",
+      "!**/*.d.ts",
+      "!**/*.js"
     ]
   },
   "overrides": [
     {
-      "include": ["tsconfig*.json"],
+      "includes": ["**/tsconfig*.json"],
       "json": {
         "parser": {
           "allowComments": true,
           "allowTrailingCommas": true
+        }
+      }
+    },
+    {
+      "includes": ["**/*.css"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noUnknownAtRules": "off"
+          }
         }
       }
     }
